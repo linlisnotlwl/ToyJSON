@@ -1,6 +1,9 @@
 #pragma once
 
 
+
+
+
 namespace Toy
 {
 class JsonVar
@@ -8,7 +11,7 @@ class JsonVar
 public:
     enum JsonType
     {
-        NULL_TYPE = 0,
+        NULL_TYPE = 0,  // 命名为NULL会冲突？？
         FALSE,
         TRUE,
         NUMBER,
@@ -18,8 +21,17 @@ public:
     };
     JsonType getType() const { return m_type; }
     void setType(const JsonType & type) { m_type = type; }
+    double getNumberVal() const;
+    void setNumberVal(double);
+    bool getBoolVal() const;
+    void setBoolVal(bool);
 private:
     JsonType m_type;
+    union Val
+    {
+        bool bool_val;
+        double num_val;
+    } m_val;
 
 };
 struct Context
@@ -44,6 +56,7 @@ private:
     static ParseStatus parseNull(Context * c, JsonVar * out_jv);
     static ParseStatus parseFalse(Context * c, JsonVar * out_jv);
     static ParseStatus parseTrue(Context * c, JsonVar * out_jv);
+    static ParseStatus parseNumber(Context * c, JsonVar * out_jv);
 };
 
 } // namesapce Toy
