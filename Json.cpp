@@ -3,7 +3,8 @@
 #include <cctype>   // for isalpha
 #include "Json.h"
 
-
+#define ISDIGIT(ch) ((ch) >= '0' && (ch) <= '9')
+#define ISDIGIT1TO9(ch) ((ch) >= '1' && (ch) <= '9')
 namespace Toy
 {
 // -----------------------------------------------xx implement start :
@@ -49,7 +50,11 @@ Json::ParseStatus Json::parse(const char *json_text, JsonVar *out_jv)
     {
         parseWhitespace(&c);
         if(*c.json != '\0')
+        {
+            out_jv->setType(JsonVar::NULL_TYPE);
             return Json::ROOT_NOT_SINGULAR;
+        }
+            
     }
     return jps;
 }
@@ -116,15 +121,55 @@ Json::ParseStatus Json::parseTrue(Context *c, JsonVar * out_jv)
 Json::ParseStatus Json::parseNumber(Context * c, JsonVar * out_jv)
 {
     char *end = nullptr;
-    // TODO : validate number
-    if(c->json[0] == '+' || c->json[0] == '.' || isalpha(c->json[0]))
-        return Json::INVALID_VALUE;
-    if(c->json[0] == '0' && c->json[1] != '.' && c->json[1] != '\0')
-        return Json::ROOT_NOT_SINGULAR;
+    // if we check number using index, 
+    // it will make mistake or miss some error case. Like: -.1
+    // if(c->json[0] == '+' || c->json[0] == '.' || isalpha(c->json[0]))
+    //     return Json::INVALID_VALUE;
+    // if(c->json[0] == '0' && c->json[1] != '.' && c->json[1] != '\0')
+    //     return Json::ROOT_NOT_SINGULAR;
+
+    // number = [ "-" ] int [ frac ] [ exp ]
+    // int = "0" / digit1-9 *digit
+    // frac = "." 1*digit
+    // exp = ("e" / "E") ["-" / "+"] 1*digit
+    const char * p = c->json;
+    // check '-'
+    if(*p == '-') 
+        p++;
+    // check '0'
+    if(*p == '0')
+        p++;
+    else    // check behind the '-': should be number
+    {
+        // here will check invaild '.' or other
+        if(!ISDIGIT1TO9(*p)) return Json::INVALID_VALUE;
+        for(++p; ISDIGIT(*p); ++p); // jump pass the number
+    }
+    /* after zero should be '.' or nothing */
+    if(*p == '.')
+    {
+        p++;
+        if(!ISDIGIT(*p)) return Json::INVALID_VALUE;
+        for(++p; ISDIGIT(*p); ++p);
+    }
+    
+    // check 'e' or 'E'
+    if(*p == 'e' || *p == 'E')
+    {
+        p++;
+        if(*p == '-' || *p == '+') p++; // 1e10 is correct
+        if(!ISDIGIT(*p)) return Json::INVALID_VALUE;
+        for(++p; ISDIGIT(*p); ++p);
+
+    }
+
+    // prase() with check the behind of *p
+    // to see if there something left.
+    // Like : 0123 (parse 0, left 123) 
+    
     double temp = strtod(c->json, &end);
-    if(c->json == end || *(end - 1) == '.')
-        return Json::INVALID_VALUE;
-    c->json = end;
+
+    c->json = p;
     out_jv->setType(JsonVar::NUMBER);
     out_jv->setNumberVal(temp);
     return Json::OK;

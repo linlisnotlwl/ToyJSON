@@ -70,6 +70,16 @@ static void test_parse_number() {
     TEST_NUMBER(1.234E+10, "1.234E+10");
     TEST_NUMBER(1.234E-10, "1.234E-10");
     TEST_NUMBER(0.0, "1e-10000"); /* must underflow */
+
+    TEST_NUMBER(1.0000000000000002, "1.0000000000000002"); /* the smallest number > 1 */
+    TEST_NUMBER( 4.9406564584124654e-324, "4.9406564584124654e-324"); /* minimum denormal */
+    TEST_NUMBER(-4.9406564584124654e-324, "-4.9406564584124654e-324");
+    TEST_NUMBER( 2.2250738585072009e-308, "2.2250738585072009e-308");  /* Max subnormal double */
+    TEST_NUMBER(-2.2250738585072009e-308, "-2.2250738585072009e-308");
+    TEST_NUMBER( 2.2250738585072014e-308, "2.2250738585072014e-308");  /* Min normal positive double */
+    TEST_NUMBER(-2.2250738585072014e-308, "-2.2250738585072014e-308");
+    TEST_NUMBER( 1.7976931348623157e+308, "1.7976931348623157e+308");  /* Max double */
+    TEST_NUMBER(-1.7976931348623157e+308, "-1.7976931348623157e+308");
 }
 
 #define TEST_ERROR(error, json)\
@@ -92,6 +102,7 @@ static void test_parse_root_not_singular() {
     TEST_ERROR(Toy::Json::ROOT_NOT_SINGULAR, "0123"); 
     TEST_ERROR(Toy::Json::ROOT_NOT_SINGULAR, "0x0");
     TEST_ERROR(Toy::Json::ROOT_NOT_SINGULAR, "0x123");
+    TEST_ERROR(Toy::Json::ROOT_NOT_SINGULAR, "1.8b");
 }
 
 //TODO
@@ -113,6 +124,9 @@ static void test_parse_invalid_value() {
     TEST_ERROR(Toy::Json::INVALID_VALUE, "inf");
     TEST_ERROR(Toy::Json::INVALID_VALUE, "NAN");
     TEST_ERROR(Toy::Json::INVALID_VALUE, "nan");
+
+    TEST_ERROR(Toy::Json::INVALID_VALUE, "-.1");
+    TEST_ERROR(Toy::Json::INVALID_VALUE, "e-100");
 }
 static void test_parse() {
     test_parse_null();
