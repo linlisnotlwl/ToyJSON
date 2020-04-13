@@ -1,6 +1,9 @@
 #include <cassert>
-#include <cstdlib>  // strtod()
+#include <cstdlib>  // strtod() malloc
 #include <cctype>   // for isalpha
+#include <cerrno>   // for errno, ERANGE
+#include <cmath>    // for HUGE_VAL
+#include <cstring>  // for memcpy
 #include "Json.h"
 
 #define ISDIGIT(ch) ((ch) >= '0' && (ch) <= '9')
@@ -21,6 +24,7 @@ double JsonVar::getNumberVal() const
 void JsonVar::setNumberVal(double val)
 {
     assert(m_type == JsonType::NUMBER);
+    //freeStrMem(); // no need: becasue of above 
     m_val.num_val = val;
 }
 
@@ -33,12 +37,48 @@ bool JsonVar::getBoolVal() const
 void JsonVar::setBoolVal(bool b)
 {
     assert(m_type == JsonType::FALSE || m_type == JsonType::TRUE);
+    //freeStrMem(); // no need: becasue of above 
     m_val.bool_val = b;
 }
 
-// -----------------------------------------------JsonVar implement end !
-// -----------------------------------------------Json implement start :
+const char *JsonVar::getCStr() const
+{
+    assert(m_type == JsonVar::STRING);
+    return m_val.str.s;
+}
 
+void JsonVar::setCStr(const char * s, size_t len)
+{
+    
+    assert(m_type == JsonVar::STRING); 
+    freeStrMem();   
+    m_val.str.s = static_cast<char *>(malloc(sizeof(char) * (len + 1)));
+    memcpy(m_val.str.s, s, len);
+    m_val.str.s[len] = '\0';
+    m_val.str.len = len;
+    // set str type ?? no, user should set it to JsonType::STRING before using this function
+}
+
+size_t JsonVar::getCStrLength() const
+{
+    assert(m_type == JsonVar::STRING);
+    return m_val.str.len;
+}
+
+void JsonVar::freeStrMem()
+{
+    if(m_type == JsonType::STRING && m_val.str.s != nullptr)
+    {
+        free(m_val.str.s);
+        m_val.str.s = nullptr;
+        m_val.str.len = 0;
+    }
+}
+// -----------------------------------------------JsonVar implement end !
+// -----------------------------------------------Context implement start :
+
+// -----------------------------------------------Context implement end !
+// -----------------------------------------------Json implement start :
 Json::ParseStatus Json::parse(const char *json_text, JsonVar *out_jv)
 {
     Context c;
@@ -75,6 +115,7 @@ Json::ParseStatus Json::parseValue(Context *c, JsonVar * out_jv)
     case '\0' : return Json::EXPECT_VALUE;
     case 'f' : return parseFalse(c, out_jv);
     case 't' : return parseTrue(c, out_jv);
+    case '\"' : return parseCStr(c, out_jv);
     default : return parseNumber(c, out_jv);
     }
 }
@@ -167,7 +208,12 @@ Json::ParseStatus Json::parseNumber(Context * c, JsonVar * out_jv)
     // to see if there something left.
     // Like : 0123 (parse 0, left 123) 
     
+    errno = 0;  // c-type error handling
     double temp = strtod(c->json, &end);
+    //ERANGE:Result too large
+    //HUGE_VAL:positive double expression that indicates overflow
+    if(errno == ERANGE && (temp == HUGE_VAL || temp == -HUGE_VAL)) 
+        return Json::NUMBER_TOO_BIG;
 
     c->json = p;
     out_jv->setType(JsonVar::NUMBER);
@@ -175,5 +221,81 @@ Json::ParseStatus Json::parseNumber(Context * c, JsonVar * out_jv)
     return Json::OK;
 }
 
+Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
+{
+    const char * p = c->json;
+    assert(*p == '\"');
+    //int count = 1;
+    for(;;)
+    {
+        p++;
+        switch(*p)
+        {
+            case '\"' : 
+            {
+                
+                out_jv->setType(JsonVar::STRING);
+                out_jv->setCStr(c->char_stack.data(), c->char_stack.size());
+                c->char_stack.clear();
+                c->json = p + 1;
+                return Json::ParseStatus::OK;
+
+            }
+            case '\0' :
+            {
+                c->char_stack.clear();
+                out_jv->setType(JsonVar::NULL_TYPE);
+                return Json::ParseStatus::MISS_QUOTATION_MARK;
+            }
+            case '\\' :
+            {
+                p++;
+                if (*p == '/' || *p == 'b' || *p == 'f' || *p == 'n' 
+                || *p == 'r' || *p == 't' || *p == '\\' || *p == '\"')
+                {
+                    c->char_stack.push_back(transEscape(*p));   
+                }
+                else
+                {
+                    c->char_stack.clear();
+                    out_jv->setType(JsonVar::NULL_TYPE);
+                    return Json::ParseStatus::INVALID_STRING_ESCAPE;
+                }
+                break;  
+            }
+            default : 
+            {
+                if(*p >= '\x00' && *p <= '\x1F')
+                {
+                    c->char_stack.clear();
+                    out_jv->setType(JsonVar::NULL_TYPE);
+                    return Json::ParseStatus::INVALID_STRING_CHAR;
+                }
+                else
+                    c->char_stack.push_back(*p);  
+            }
+        }
+    }
+}
+const char Json::transEscape(const char & c)
+{
+    if(c == 'n')
+        return '\n';
+    if(c == '/')
+        return '/';
+    if(c == 'b')
+        return '\b';
+    if(c == 'f')
+        return '\f';
+    if(c == 'r')
+        return '\r';
+    if(c == 't')
+        return '\t';
+    if(c == '\\')
+        return '\\';
+    if(c == '\"')
+        return '\"';
+    return ' '; // FIXME : something to return 
+}
 // -----------------------------------------------Json implement end !
 } // namespace Toy
