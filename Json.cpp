@@ -221,45 +221,105 @@ Json::ParseStatus Json::parseNumber(Context * c, JsonVar * out_jv)
     return Json::OK;
 }
 
+Json::ParseStatus HandleAndReturnError(Context * c, JsonVar * out_jv, Json::ParseStatus status)
+{
+    c->char_stack.clear();
+    // TODO : is it necessary?
+    out_jv->setType(JsonVar::NULL_TYPE);
+    return status;
+}
 Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
 {
     const char * p = c->json;
     assert(*p == '\"');
-    //int count = 1;
+    u_int32_t u; // save utf-8 code
     for(;;)
     {
         p++;
         switch(*p)
         {
             case '\"' : 
-            {
-                
+            {  
                 out_jv->setType(JsonVar::STRING);
                 out_jv->setCStr(c->char_stack.data(), c->char_stack.size());
                 c->char_stack.clear();
                 c->json = p + 1;
                 return Json::ParseStatus::OK;
-
             }
             case '\0' :
-            {
-                c->char_stack.clear();
-                out_jv->setType(JsonVar::NULL_TYPE);
-                return Json::ParseStatus::MISS_QUOTATION_MARK;
-            }
+                return HandleAndReturnError(c, out_jv, Json::ParseStatus::MISS_QUOTATION_MARK);
             case '\\' :
             {
                 p++;
-                if (*p == '/' || *p == 'b' || *p == 'f' || *p == 'n' 
-                || *p == 'r' || *p == 't' || *p == '\\' || *p == '\"')
+                switch(*p)
                 {
-                    c->char_stack.push_back(transEscape(*p));   
-                }
-                else
-                {
-                    c->char_stack.clear();
-                    out_jv->setType(JsonVar::NULL_TYPE);
-                    return Json::ParseStatus::INVALID_STRING_ESCAPE;
+                    case 'n' : c->char_stack.push_back('\n'); break;
+                    case '/' : c->char_stack.push_back('/'); break;
+                    case 'b' : c->char_stack.push_back('\b'); break;
+                    case 'f' : c->char_stack.push_back('\f'); break;
+                    case 'r' : c->char_stack.push_back('\r'); break;
+                    case 't' : c->char_stack.push_back('\t'); break;
+                    case '\\' : c->char_stack.push_back('\\'); break;
+                    case '\"' : c->char_stack.push_back('\"'); break;
+                    case 'u' :
+                    {
+                        p++;
+                        if(!parseHex4(p, u))
+                            return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_HEX);
+                        
+                        // check UNICODE_SURROGATE
+                        if(u >= 0xDC00)// low surrogate occur with a high surrogate
+                            return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE);
+                        if(u >= 0xD800 && u <= 0xDBFF) // high surrogate
+                        {
+                            p += 4; // jump to next code. should begin with '\\'
+                            if(*p != '\\' || *(p+1) != 'u')
+                                return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE);
+                            u_int32_t low_s;
+                            if(!parseHex4(p+2, low_s))
+                                return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE);
+                            if(low_s < 0xDC00 || low_s > 0xDFFF)
+                                return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE);
+                            
+                            u = 0x10000 + ((u - 0xD800) << 10) + (low_s - 0xDC00);
+
+                            p += 2; // jump to first X of \\uXXXX
+                        }
+
+                        assert(u >= 0 && u <= 0x10FFFF);
+                        if (u >= 0 && u <= 0x007F)
+                            c->char_stack.push_back(u);
+                        else if (u >= 0x0080 && u <= 0x07FF)
+                        {
+                            // byte1 : 110x xxxx. 0xC0: 1100 0000.  0x1F:    1 1111.
+                            // byte2 : 10xx xxxx. 0x80: 1000 0000.  0x3F:   11 1111.
+                            c->char_stack.push_back(0xC0 | ((u >> 6) & 0x1F));
+                            c->char_stack.push_back(0x80 | (u & 0x3F));
+                        }
+                        else if (u >= 0x0800 && u <= 0xFFFF)
+                        {
+                            // byte1 : 1110 xxxx. 0xE0: 1110 0000.  0x0F:      1111.
+                            // byte2 : 10xx xxxx. 0x80: 1000 0000.  0x3F:   11 1111.
+                            // byte3 like byte2;
+                            c->char_stack.push_back(0xE0 | ((u >> 12) & 0x0F));
+                            c->char_stack.push_back(0x80 | ((u >> 6) & 0x3F));
+                            c->char_stack.push_back(0x80 | (u & 0x3F));
+                        }
+                        else
+                        {
+                            // byte1 : 1111 0xxx. 0xF0: 1111 0000.  0x08:      0111.
+                            // byte2 : 10xx xxxx. 0x80: 1000 0000.  0x3F:   11 1111.
+                            // byte3 byte4 like byte2;
+                            c->char_stack.push_back(0xF0 | ((u >> 18) & 0x08));
+                            c->char_stack.push_back(0x80 | ((u >> 12) & 0x3F));
+                            c->char_stack.push_back(0x80 | ((u >> 6) & 0x3F));
+                            c->char_stack.push_back(0x80 | (u & 0x3F));
+                        }
+                        p += 3; // p point at 'u', so jump to last number
+                        break;
+                    }
+                    default : 
+                        return HandleAndReturnError(c, out_jv, Json::INVALID_STRING_ESCAPE);   
                 }
                 break;  
             }
@@ -267,35 +327,65 @@ Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
             {
                 if(*p >= '\x00' && *p <= '\x1F')
                 {
-                    c->char_stack.clear();
-                    out_jv->setType(JsonVar::NULL_TYPE);
-                    return Json::ParseStatus::INVALID_STRING_CHAR;
+                    return HandleAndReturnError(c, out_jv, Json::INVALID_STRING_CHAR);
                 }
                 else
                     c->char_stack.push_back(*p);  
             }
         }
     }
+    // 优化思考：
+    // 来源（https://github.com/miloyip/json-tutorial/blob/master/tutorial03_answer）
+    // 1、假如没有转义字符，则不用进行转义判断，也不需要利用stack存储临时解析的char
+    //    可以直接放入JsonVar中，从而减少一次拷贝。
+    // 2、对于扫描没转义部分，我们可考虑用 SIMD 加速，
+    //    如 RapidJSON 代码剖析（二）：使用 SSE4.2 优化字符串扫描 的做法。
+    //  （https://zhuanlan.zhihu.com/p/20037058）
+    //   这类底层优化的缺点是不跨平台，需要设置编译选项等。
+    // 3、在 gcc/clang 上使用 __builtin_expect() 指令来处理低概率事件，
+    //   例如需要对每个字符做 LEPT_PARSE_INVALID_STRING_CHAR 检测，
+    //   我们可以假设出现不合法字符是低概率事件，然后用这个指令告之编译器，
+    //   那么编译器可能可生成较快的代码。然而，这类做法明显是不跨编译器，
+    //   甚至是某个版本后的 gcc 才支持
 }
-const char Json::transEscape(const char & c)
+bool Json::parseHex4(const char * str, u_int32_t & u)
 {
-    if(c == 'n')
-        return '\n';
-    if(c == '/')
-        return '/';
-    if(c == 'b')
-        return '\b';
-    if(c == 'f')
-        return '\f';
-    if(c == 'r')
-        return '\r';
-    if(c == 't')
-        return '\t';
-    if(c == '\\')
-        return '\\';
-    if(c == '\"')
-        return '\"';
-    return ' '; // FIXME : something to return 
+    int count = 0;
+    u = 0;
+    while(*str != '\0' && count < 4)
+    {
+        if(isxdigit(static_cast<unsigned char>(*str)) == 0) // or use std::isxdigit in <locale>
+            return false;
+        //u = (u << 4) | (charToUint32(*str) & 0x0F);
+        u = (u << 4) | charToUint32(*str);
+        count++;
+        str++;
+    }
+    return count == 4;
+    
+}
+
+u_int32_t Json::charToUint32(const char & c)
+{
+    assert(isxdigit(static_cast<unsigned char>(c)) != 0);
+    if(isdigit(static_cast<unsigned char>(c)) != 0)
+        return c - '0';
+    switch(c)
+    {
+        case 'a' :
+        case 'A' : return 10;
+        case 'b' :
+        case 'B' : return 11;
+        case 'c' :
+        case 'C' : return 12;
+        case 'd' :
+        case 'D' : return 13;
+        case 'e' :
+        case 'E' : return 14;
+        //case 'f' :
+        //case 'F' : return 15;
+        default : return 15;
+    }
 }
 // -----------------------------------------------Json implement end !
 } // namespace Toy
