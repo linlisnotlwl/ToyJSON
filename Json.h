@@ -1,9 +1,9 @@
 #pragma once
 
-#include <vector>
+//#include <vector>
 #include <sys/types.h>  // for u_int32_t
 
-
+#include "PureStack.h"
 
 namespace Toy
 {
@@ -32,6 +32,9 @@ public:
     const char * getCStr() const;
     void setCStr(const char *, size_t);
     size_t getCStrLength() const;
+    size_t getArraySize() const;
+    void setArraySize(size_t size);
+    void setArray(JsonVar *jv, size_t size);
 private:
     void freeStrMem();
     JsonType m_type = JsonType::NULL_TYPE;  // init to be null type
@@ -39,10 +42,17 @@ private:
     {
         bool bool_val;
         double num_val;
-        struct {
-            char * s;
+        struct 
+        {
             size_t len;
+            char * s;
         } str;
+        struct 
+        {
+            JsonVar *jv;    // array pointer, must destruct all elements
+            size_t size;    // element num
+        } array;
+        
     } m_val;
 
 };
@@ -59,7 +69,7 @@ struct Context
 {
     const char * json;
     /// container : store the temp parsed char
-    std::vector<char> char_stack;
+    PureStack parse_stack;
 };
 
 class Json
@@ -67,16 +77,17 @@ class Json
 public:
     enum ParseStatus
     {
-        OK = 0,                     /// 0 : 正常
-        EXPECT_VALUE,               /// 1 : 只含有空白
-        INVALID_VALUE,              /// 2 : 值不是所定义的字面值
-        ROOT_NOT_SINGULAR,          /// 3 : 一个值之后，在空白之后还有其他字符
-        NUMBER_TOO_BIG,             /// 4 : 数值太大
-        MISS_QUOTATION_MARK,        /// 5 : 字符串缺少 " 
-        INVALID_STRING_ESCAPE,      /// 6 : 无效的转义字符
-        INVALID_STRING_CHAR,        /// 7 : 无效的字符
-        INVALID_UNICODE_SURROGATE,  /// 8 : 不正确的代理对范围
-        INVALID_UNICODE_HEX         /// 9 : \u 后面不是4位十六进制数字
+        OK = 0,                         /// 0 : 正常
+        EXPECT_VALUE,                   /// 1 : 只含有空白
+        INVALID_VALUE,                  /// 2 : 值不是所定义的字面值
+        ROOT_NOT_SINGULAR,              /// 3 : 一个值之后，在空白之后还有其他字符
+        NUMBER_TOO_BIG,                 /// 4 : 数值太大
+        MISS_QUOTATION_MARK,            /// 5 : 字符串缺少 " 
+        INVALID_STRING_ESCAPE,          /// 6 : 无效的转义字符
+        INVALID_STRING_CHAR,            /// 7 : 无效的字符
+        INVALID_UNICODE_SURROGATE,      /// 8 : 不正确的代理对范围
+        INVALID_UNICODE_HEX,            /// 9 : \u 后面不是4位十六进制数字
+        MISS_COMMA_OR_SQUARE_BRACKET    /// 10 : [ ] 数组括号缺失，不匹配
     };
     static ParseStatus parse(const char *json_text, JsonVar * out_jv);
 private:
@@ -89,7 +100,7 @@ private:
     static ParseStatus parseCStr(Context * c, JsonVar * out_jv);
     static bool parseHex4(const char *, u_int32_t &);
     static u_int32_t charToUint32(const char & c);
-    
+    static ParseStatus parseArray(Context * c, JsonVar * out_jv);
 };
 
 } // namesapce Toy

@@ -74,6 +74,23 @@ void JsonVar::freeStrMem()
         m_val.str.len = 0;
     }
 }
+
+size_t JsonVar::getArraySize() const
+{
+    //assert(m_type == JsonVar::ARRAY);
+    return m_val.array.size;
+}
+void JsonVar::setArraySize(size_t size)
+{
+    assert(m_type == JsonVar::ARRAY);
+    m_val.array.size = size;
+}
+void JsonVar::setArray(JsonVar *jv, size_t size)
+{
+    assert(m_type == JsonVar::ARRAY);
+    m_val.array.jv = jv;
+    m_val.array.size = size;
+}
 // -----------------------------------------------JsonVar implement end !
 // -----------------------------------------------Context implement start :
 
@@ -89,8 +106,9 @@ Json::ParseStatus Json::parse(const char *json_text, JsonVar *out_jv)
     if((jps = parseValue(&c, out_jv)) == Json::OK)
     {
         parseWhitespace(&c);
-        if(*c.json != '\0')
+        if(*c.json != '\0') 
         {
+            // TODO : is it necessary?
             out_jv->setType(JsonVar::NULL_TYPE);
             return Json::ROOT_NOT_SINGULAR;
         }
@@ -116,6 +134,7 @@ Json::ParseStatus Json::parseValue(Context *c, JsonVar * out_jv)
     case 'f' : return parseFalse(c, out_jv);
     case 't' : return parseTrue(c, out_jv);
     case '\"' : return parseCStr(c, out_jv);
+    case '[' : return parseArray(c, out_jv);
     default : return parseNumber(c, out_jv);
     }
 }
@@ -223,7 +242,7 @@ Json::ParseStatus Json::parseNumber(Context * c, JsonVar * out_jv)
 
 Json::ParseStatus HandleAndReturnError(Context * c, JsonVar * out_jv, Json::ParseStatus status)
 {
-    c->char_stack.clear();
+    c->parse_stack.clear();
     // TODO : is it necessary?
     out_jv->setType(JsonVar::NULL_TYPE);
     return status;
@@ -241,8 +260,8 @@ Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
             case '\"' : 
             {  
                 out_jv->setType(JsonVar::STRING);
-                out_jv->setCStr(c->char_stack.data(), c->char_stack.size());
-                c->char_stack.clear();
+                out_jv->setCStr(reinterpret_cast<char *>(c->parse_stack.getData()), c->parse_stack.getSize());
+                c->parse_stack.clear();
                 c->json = p + 1;
                 return Json::ParseStatus::OK;
             }
@@ -253,14 +272,14 @@ Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
                 p++;
                 switch(*p)
                 {
-                    case 'n' : c->char_stack.push_back('\n'); break;
-                    case '/' : c->char_stack.push_back('/'); break;
-                    case 'b' : c->char_stack.push_back('\b'); break;
-                    case 'f' : c->char_stack.push_back('\f'); break;
-                    case 'r' : c->char_stack.push_back('\r'); break;
-                    case 't' : c->char_stack.push_back('\t'); break;
-                    case '\\' : c->char_stack.push_back('\\'); break;
-                    case '\"' : c->char_stack.push_back('\"'); break;
+                    case 'n' : *(c->parse_stack.push<char>()) = '\n'; break;
+                    case '/' : *(c->parse_stack.push<char>()) = '/'; break;
+                    case 'b' : *(c->parse_stack.push<char>()) ='\b'; break;
+                    case 'f' : *(c->parse_stack.push<char>()) ='\f'; break;
+                    case 'r' : *(c->parse_stack.push<char>()) ='\r'; break;
+                    case 't' : *(c->parse_stack.push<char>()) ='\t'; break;
+                    case '\\' : *(c->parse_stack.push<char>()) ='\\'; break;
+                    case '\"' : *(c->parse_stack.push<char>()) ='\"'; break;
                     case 'u' :
                     {
                         p++;
@@ -288,32 +307,32 @@ Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
 
                         assert(u >= 0 && u <= 0x10FFFF);
                         if (u >= 0 && u <= 0x007F)
-                            c->char_stack.push_back(u);
+                            *(c->parse_stack.push<char>()) = u;
                         else if (u >= 0x0080 && u <= 0x07FF)
                         {
                             // byte1 : 110x xxxx. 0xC0: 1100 0000.  0x1F:    1 1111.
                             // byte2 : 10xx xxxx. 0x80: 1000 0000.  0x3F:   11 1111.
-                            c->char_stack.push_back(0xC0 | ((u >> 6) & 0x1F));
-                            c->char_stack.push_back(0x80 | (u & 0x3F));
+                            *(c->parse_stack.push<char>()) = 0xC0 | ((u >> 6) & 0x1F);
+                            *(c->parse_stack.push<char>()) =0x80 | (u & 0x3F);
                         }
                         else if (u >= 0x0800 && u <= 0xFFFF)
                         {
                             // byte1 : 1110 xxxx. 0xE0: 1110 0000.  0x0F:      1111.
                             // byte2 : 10xx xxxx. 0x80: 1000 0000.  0x3F:   11 1111.
                             // byte3 like byte2;
-                            c->char_stack.push_back(0xE0 | ((u >> 12) & 0x0F));
-                            c->char_stack.push_back(0x80 | ((u >> 6) & 0x3F));
-                            c->char_stack.push_back(0x80 | (u & 0x3F));
+                            *(c->parse_stack.push<char>()) = 0xE0 | ((u >> 12) & 0x0F);
+                            *(c->parse_stack.push<char>()) = 0x80 | ((u >> 6) & 0x3F);
+                            *(c->parse_stack.push<char>()) = 0x80 | (u & 0x3F);
                         }
                         else
                         {
                             // byte1 : 1111 0xxx. 0xF0: 1111 0000.  0x08:      0111.
                             // byte2 : 10xx xxxx. 0x80: 1000 0000.  0x3F:   11 1111.
                             // byte3 byte4 like byte2;
-                            c->char_stack.push_back(0xF0 | ((u >> 18) & 0x08));
-                            c->char_stack.push_back(0x80 | ((u >> 12) & 0x3F));
-                            c->char_stack.push_back(0x80 | ((u >> 6) & 0x3F));
-                            c->char_stack.push_back(0x80 | (u & 0x3F));
+                            *(c->parse_stack.push<char>()) = 0xF0 | ((u >> 18) & 0x08);
+                            *(c->parse_stack.push<char>()) = 0x80 | ((u >> 12) & 0x3F);
+                            *(c->parse_stack.push<char>()) = 0x80 | ((u >> 6) & 0x3F);
+                            *(c->parse_stack.push<char>()) = 0x80 | (u & 0x3F);
                         }
                         p += 3; // p point at 'u', so jump to last number
                         break;
@@ -330,7 +349,7 @@ Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
                     return HandleAndReturnError(c, out_jv, Json::INVALID_STRING_CHAR);
                 }
                 else
-                    c->char_stack.push_back(*p);  
+                    *(c->parse_stack.push<char>()) = *p;  
             }
         }
     }
@@ -386,6 +405,24 @@ u_int32_t Json::charToUint32(const char & c)
         //case 'F' : return 15;
         default : return 15;
     }
+}
+
+Json::ParseStatus Json::parseArray(Context * c, JsonVar * out_jv)
+{
+    const char * p = c->json;
+    assert(*p == '[');
+    p++;
+    if(*p == ']')
+    {
+        c->json = p + 1;
+        out_jv->setType(JsonVar::ARRAY);
+        out_jv->setArray(nullptr, 0);
+        return Json::OK;
+    }
+    // for(;;)
+    // {
+        
+    // }
 }
 // -----------------------------------------------Json implement end !
 } // namespace Toy
