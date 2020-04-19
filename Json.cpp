@@ -51,7 +51,7 @@ void JsonVar::setCStr(const char * s, size_t len)
 {
     
     assert(m_type == JsonVar::STRING); 
-    freeStrMem();   
+    freeMem();   
     m_val.str.s = static_cast<char *>(malloc(sizeof(char) * (len + 1)));
     memcpy(m_val.str.s, s, len);
     m_val.str.s[len] = '\0';
@@ -65,13 +65,23 @@ size_t JsonVar::getCStrLength() const
     return m_val.str.len;
 }
 
-void JsonVar::freeStrMem()
+void JsonVar::freeMem()
 {
     if(m_type == JsonType::STRING && m_val.str.s != nullptr)
     {
         free(m_val.str.s);
         m_val.str.s = nullptr;
         m_val.str.len = 0;
+    }
+    if(m_type == JsonType::ARRAY && m_val.array.jv != nullptr)
+    {
+        for(size_t i = 0; i < m_val.array.size; ++i)
+        {
+            m_val.array.jv[i].~JsonVar();
+        }
+        free(m_val.array.jv);
+        m_val.array.jv = nullptr;
+        m_val.array.size = 0;
     }
 }
 
@@ -88,7 +98,9 @@ void JsonVar::setArraySize(size_t size)
 void JsonVar::setArray(JsonVar *jv, size_t size)
 {
     assert(m_type == JsonVar::ARRAY);
-    m_val.array.jv = jv;
+    freeMem();
+    m_val.array.jv = reinterpret_cast<JsonVar *>(malloc(size * sizeof(JsonVar)));
+    memcpy(m_val.array.jv, jv, size * sizeof(JsonVar));
     m_val.array.size = size;
 }
 // -----------------------------------------------JsonVar implement end !
@@ -240,33 +252,37 @@ Json::ParseStatus Json::parseNumber(Context * c, JsonVar * out_jv)
     return Json::OK;
 }
 
-Json::ParseStatus HandleAndReturnError(Context * c, JsonVar * out_jv, Json::ParseStatus status)
+Json::ParseStatus HandleAndReturnError(Context * c, JsonVar * out_jv, Json::ParseStatus status, size_t size)
 {
-    c->parse_stack.clear();
+    //c->parse_stack.clear();
+    c->parse_stack.pop<char>(size);
     // TODO : is it necessary?
     out_jv->setType(JsonVar::NULL_TYPE);
     return status;
 }
 Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
 {
+    size_t size =  c->parse_stack.getSize(); // current size in stack;
     const char * p = c->json;
     assert(*p == '\"');
     u_int32_t u; // save utf-8 code
     for(;;)
     {
         p++;
+        size_t temp_size = c->parse_stack.getSize() - size;
         switch(*p)
         {
+            
             case '\"' : 
             {  
                 out_jv->setType(JsonVar::STRING);
-                out_jv->setCStr(reinterpret_cast<char *>(c->parse_stack.getData()), c->parse_stack.getSize());
-                c->parse_stack.clear();
+                out_jv->setCStr(reinterpret_cast<char *>(c->parse_stack.getData()) + size, temp_size);
+                c->parse_stack.pop<char>(temp_size);
                 c->json = p + 1;
                 return Json::ParseStatus::OK;
             }
             case '\0' :
-                return HandleAndReturnError(c, out_jv, Json::ParseStatus::MISS_QUOTATION_MARK);
+                return HandleAndReturnError(c, out_jv, Json::ParseStatus::MISS_QUOTATION_MARK, temp_size);
             case '\\' :
             {
                 p++;
@@ -284,21 +300,21 @@ Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
                     {
                         p++;
                         if(!parseHex4(p, u))
-                            return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_HEX);
+                            return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_HEX, temp_size);
                         
                         // check UNICODE_SURROGATE
                         if(u >= 0xDC00)// low surrogate occur with a high surrogate
-                            return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE);
+                            return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE, temp_size);
                         if(u >= 0xD800 && u <= 0xDBFF) // high surrogate
                         {
                             p += 4; // jump to next code. should begin with '\\'
                             if(*p != '\\' || *(p+1) != 'u')
-                                return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE);
+                                return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE, temp_size);
                             u_int32_t low_s;
                             if(!parseHex4(p+2, low_s))
-                                return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE);
+                                return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE, temp_size);
                             if(low_s < 0xDC00 || low_s > 0xDFFF)
-                                return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE);
+                                return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE, temp_size);
                             
                             u = 0x10000 + ((u - 0xD800) << 10) + (low_s - 0xDC00);
 
@@ -338,7 +354,7 @@ Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
                         break;
                     }
                     default : 
-                        return HandleAndReturnError(c, out_jv, Json::INVALID_STRING_ESCAPE);   
+                        return HandleAndReturnError(c, out_jv, Json::INVALID_STRING_ESCAPE, temp_size);   
                 }
                 break;  
             }
@@ -346,7 +362,7 @@ Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
             {
                 if(*p >= '\x00' && *p <= '\x1F')
                 {
-                    return HandleAndReturnError(c, out_jv, Json::INVALID_STRING_CHAR);
+                    return HandleAndReturnError(c, out_jv, Json::INVALID_STRING_CHAR, temp_size);
                 }
                 else
                     *(c->parse_stack.push<char>()) = *p;  
@@ -409,20 +425,51 @@ u_int32_t Json::charToUint32(const char & c)
 
 Json::ParseStatus Json::parseArray(Context * c, JsonVar * out_jv)
 {
-    const char * p = c->json;
-    assert(*p == '[');
-    p++;
-    if(*p == ']')
+    //const char * p = c->json;
+    size_t size = 0; // sort cur level array elememt nums
+    assert(*c->json == '[');
+    c->json++;
+    parseWhitespace(c);
+    if(*c->json == ']')
     {
-        c->json = p + 1;
+        c->json++;
         out_jv->setType(JsonVar::ARRAY);
         out_jv->setArray(nullptr, 0);
         return Json::OK;
     }
-    // for(;;)
-    // {
+    Json::ParseStatus ret;
+    for(;;)
+    {
+        parseWhitespace(c);
+        JsonVar * temp = c->parse_stack.emplace_back<JsonVar>();
+        if((ret = parseValue(c, temp)) != Json::OK)
+        {
+            c->parse_stack.destruct_pop<JsonVar>(size + 1);
+            return ret;
+        }
+            
+        size++;
+        parseWhitespace(c);
+        if(*c->json == ',')
+        {
+            c->json++;
+            
+        }
+        else if(*c->json == ']')
+        {
+            out_jv->setType(JsonVar::ARRAY);
+            out_jv->setArray(c->parse_stack.top<JsonVar>() - size + 1, size);
+            c->parse_stack.pop<JsonVar>(size);
+            c->json++;
+            return Json::OK;
+        }
+        else
+        {
+            c->parse_stack.releaseAll<JsonVar>();
+            return Json::MISS_COMMA_OR_SQUARE_BRACKET;
+        }
         
-    // }
+    }
 }
 // -----------------------------------------------Json implement end !
 } // namespace Toy

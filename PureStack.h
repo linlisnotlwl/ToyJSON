@@ -71,8 +71,9 @@ public:
     }
     template<typename T>
     void releaseAll() 
-    {
-        
+    {   
+        size_t num = getSize() / sizeof(T);
+        destruct_pop<T>(num);
     }
     inline size_t getSize() const { return static_cast<size_t>(free_space - data); }
     void * getData() const { return reinterpret_cast<void *>(data); }

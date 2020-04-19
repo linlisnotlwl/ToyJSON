@@ -104,14 +104,12 @@ static void test_parse_string() {
     TEST_STRING("Hello", "\"Hello\"");
     TEST_STRING("Hello\nWorld", "\"Hello\\nWorld\"");
     TEST_STRING("\" \\ / \b \f \n \r \t", "\"\\\" \\\\ \\/ \\b \\f \\n \\r \\t\"");
-#if 1
     TEST_STRING("Hello\0World", "\"Hello\\u0000World\"");
     TEST_STRING("\x24", "\"\\u0024\"");         /* Dollar sign U+0024 */
     TEST_STRING("\xC2\xA2", "\"\\u00A2\"");     /* Cents sign U+00A2 */
     TEST_STRING("\xE2\x82\xAC", "\"\\u20AC\""); /* Euro sign U+20AC */
     TEST_STRING("\xF0\x9D\x84\x9E", "\"\\uD834\\uDD1E\"");  /* G clef sign U+1D11E */
     TEST_STRING("\xF0\x9D\x84\x9E", "\"\\ud834\\udd1e\"");  /* G clef sign U+1D11E */
-#endif
 }
 
 static void test_parse_array() {
@@ -121,6 +119,14 @@ static void test_parse_array() {
     EXPECT_EQ_INT(Toy::Json::OK, Toy::Json::parse("[ ]", &v));
     EXPECT_EQ_INT(Toy::JsonVar::ARRAY, v.getType());
     EXPECT_EQ_SIZE_T(0, v.getArraySize());
+
+    EXPECT_EQ_INT(Toy::Json::OK, Toy::Json::parse("[[1, false, null], 1 ]", &v));
+    EXPECT_EQ_SIZE_T(2, v.getArraySize());
+
+    //EXPECT_EQ_INT(Toy::Json::OK, Toy::Json::parse("[ null , false , true , 123 , "abc" ]", &v));
+    //EXPECT_EQ_SIZE_T(4, v.getArraySize());
+    EXPECT_EQ_INT(Toy::Json::OK, Toy::Json::parse("[ [ ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]", &v));
+    EXPECT_EQ_SIZE_T(4, v.getArraySize());
 
 }
 
@@ -170,7 +176,7 @@ static void test_parse_invalid_value() {
     TEST_ERROR(Toy::Json::INVALID_VALUE, "e-100");
 
     /* invalid value in array */
-#if 0
+#if 1
     TEST_ERROR(Toy::Json::INVALID_VALUE, "[1,]");
     TEST_ERROR(Toy::Json::INVALID_VALUE, "[\"a\", nul]");
 #endif
@@ -181,21 +187,15 @@ static void test_parse_missing_quotation_mark() {
 }
 
 static void test_parse_invalid_string_escape() {
-
-#if 1
     TEST_ERROR(Toy::Json::INVALID_STRING_ESCAPE, "\"\\v\"");
     TEST_ERROR(Toy::Json::INVALID_STRING_ESCAPE, "\"\\'\"");
     TEST_ERROR(Toy::Json::INVALID_STRING_ESCAPE, "\"\\0\"");
     TEST_ERROR(Toy::Json::INVALID_STRING_ESCAPE, "\"\\x12\"");
-#endif
 }
 
 static void test_parse_invalid_string_char() {
-
-#if 1
     TEST_ERROR(Toy::Json::INVALID_STRING_CHAR, "\"\x01\"");
     TEST_ERROR(Toy::Json::INVALID_STRING_CHAR, "\"\x1F\"");
-#endif
 }
 
 static void test_access_null() {
@@ -295,8 +295,8 @@ static void test_parse() {
     test_parse_invalid_unicode_hex();
     test_parse_invalid_unicode_surrogate();
 
-    //test_parse_array();
-    //test_parse_miss_comma_or_square_bracket();
+    test_parse_array();
+    test_parse_miss_comma_or_square_bracket();
 
 }
 int main()

@@ -21,10 +21,10 @@ public:
         OBJECT
     };
     JsonVar(){ m_val.str.s = nullptr; m_val.str.len = 0; }
-    ~JsonVar() { freeStrMem(); }
+    ~JsonVar() { freeMem(); }
     JsonType getType() const {  return m_type; }
     // FIXME : set to string but s is not null, free coredump
-    void setType(const JsonType & type) { freeStrMem(); m_type = type; }
+    void setType(const JsonType & type) { freeMem(); m_type = type; }
     double getNumberVal() const;
     void setNumberVal(double);
     bool getBoolVal() const;
@@ -36,7 +36,7 @@ public:
     void setArraySize(size_t size);
     void setArray(JsonVar *jv, size_t size);
 private:
-    void freeStrMem();
+    void freeMem();
     JsonType m_type = JsonType::NULL_TYPE;  // init to be null type
     union Val
     {
