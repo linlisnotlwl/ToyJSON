@@ -49,7 +49,6 @@ const char *JsonVar::getCStr() const
 
 void JsonVar::setCStr(const char * s, size_t len)
 {
-    
     assert(m_type == JsonVar::STRING); 
     freeMem();   
     m_val.str.s = static_cast<char *>(malloc(sizeof(char) * (len + 1)));
@@ -99,9 +98,21 @@ void JsonVar::setArray(JsonVar *jv, size_t size)
 {
     assert(m_type == JsonVar::ARRAY);
     freeMem();
-    m_val.array.jv = reinterpret_cast<JsonVar *>(malloc(size * sizeof(JsonVar)));
-    memcpy(m_val.array.jv, jv, size * sizeof(JsonVar));
+    if(jv != nullptr)   // Bug : if jv is null,that would be a bug, so should check it first
+    {
+        m_val.array.jv = reinterpret_cast<JsonVar *>(malloc(size * sizeof(JsonVar)));
+        memcpy(m_val.array.jv, jv, size * sizeof(JsonVar));
+    }
     m_val.array.size = size;
+}
+
+JsonVar & JsonVar::operator=(JsonVar && jv)
+{
+    m_val = jv.m_val;
+    m_type = jv.m_type;
+    jv.m_type = JsonVar::NULL_TYPE;
+    jv.reset();
+    return *this;
 }
 // -----------------------------------------------JsonVar implement end !
 // -----------------------------------------------Context implement start :
@@ -426,7 +437,7 @@ u_int32_t Json::charToUint32(const char & c)
 Json::ParseStatus Json::parseArray(Context * c, JsonVar * out_jv)
 {
     //const char * p = c->json;
-    size_t size = 0; // sort cur level array elememt nums
+    size_t size = 0; // store cur level array elememt nums
     assert(*c->json == '[');
     c->json++;
     parseWhitespace(c);
@@ -440,20 +451,24 @@ Json::ParseStatus Json::parseArray(Context * c, JsonVar * out_jv)
     Json::ParseStatus ret;
     for(;;)
     {
-        parseWhitespace(c);
-        JsonVar * temp = c->parse_stack.emplace_back<JsonVar>();
-        if((ret = parseValue(c, temp)) != Json::OK)
+        // bug : if c->parse_stack resize, pointer temp would bu invaild.
+        //JsonVar * temp = c->parse_stack.emplace_back<JsonVar>();
+        JsonVar temp;
+        if((ret = parseValue(c, &temp)) != Json::OK)
         {
-            c->parse_stack.destruct_pop<JsonVar>(size + 1);
+            // !!!must destruct first, and then release the stack space occupied by current array's JsonVar
+            c->parse_stack.destruct_pop<JsonVar>(size);
             return ret;
         }
-            
+        //*c->parse_stack.push<JsonVar>() = std::move(temp);
+        JsonVar * top = c->parse_stack.push<JsonVar>();
+        *top = std::move(temp);
         size++;
         parseWhitespace(c);
         if(*c->json == ',')
         {
             c->json++;
-            
+            parseWhitespace(c);   
         }
         else if(*c->json == ']')
         {
@@ -465,7 +480,7 @@ Json::ParseStatus Json::parseArray(Context * c, JsonVar * out_jv)
         }
         else
         {
-            c->parse_stack.releaseAll<JsonVar>();
+            c->parse_stack.destruct_pop<JsonVar>(size);
             return Json::MISS_COMMA_OR_SQUARE_BRACKET;
         }
         

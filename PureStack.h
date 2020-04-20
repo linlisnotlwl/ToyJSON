@@ -5,7 +5,7 @@
 
 namespace Toy
 {
-    static constexpr int INIT_STACK_SIZE = 256;
+    static constexpr int INIT_STACK_SIZE = 10;
 /**
  * @brief   Container Stack : store any type in same stack. 
  * @warning No security guarantee. Users should use it correctly.
@@ -86,22 +86,28 @@ private:
         {
             if(memory_size == 0)
             {
-                data = static_cast<char *>(malloc(INIT_STACK_SIZE));
+                memory_size = INIT_STACK_SIZE < new_size ? new_size : INIT_STACK_SIZE; // bug fixed:look history
+                data = static_cast<char *>(malloc(memory_size));
                 if(data == nullptr)
+                {
+                    memory_size = 0;
                     throw std::bad_alloc();
-                free_space = data;
-                memory_size = INIT_STACK_SIZE;
+                }   
+                free_space = data;    
             }
             else
             {
                 size_t temp = memory_size;
                 size_t data_size = getSize();
-                while(new_size > memory_size)
+                while(new_size > temp)
                     temp += temp >> 1;  // temp = 1.5 * temp;
                 data = static_cast<char *>(realloc(data, temp));
                 if(data == nullptr)
+                {
+                    memory_size = 0;
                     throw std::bad_alloc();
-                free_space += data_size;
+                }
+                free_space = data + data_size;
                 memory_size = temp;
             }   
         }

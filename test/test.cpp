@@ -128,6 +128,7 @@ static void test_parse_array() {
     EXPECT_EQ_INT(Toy::Json::OK, Toy::Json::parse("[ [ ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]", &v));
     EXPECT_EQ_SIZE_T(4, v.getArraySize());
 
+
 }
 
 #define TEST_ERROR(error, json)\

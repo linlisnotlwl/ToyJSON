@@ -20,7 +20,7 @@ public:
         ARRAY,
         OBJECT
     };
-    JsonVar(){ m_val.str.s = nullptr; m_val.str.len = 0; }
+    JsonVar(){ reset(); }
     ~JsonVar() { freeMem(); }
     JsonType getType() const {  return m_type; }
     // FIXME : set to string but s is not null, free coredump
@@ -35,7 +35,10 @@ public:
     size_t getArraySize() const;
     void setArraySize(size_t size);
     void setArray(JsonVar *jv, size_t size);
+    
+    JsonVar & operator=(JsonVar && jv);
 private:
+    void reset() { memset(&m_val, 0, sizeof(m_val)); }
     void freeMem();
     JsonType m_type = JsonType::NULL_TYPE;  // init to be null type
     union Val
@@ -49,8 +52,8 @@ private:
         } str;
         struct 
         {
-            JsonVar *jv;    // array pointer, must destruct all elements
             size_t size;    // element num
+            JsonVar *jv;    // array pointer, must destruct all elements  
         } array;
         
     } m_val;
