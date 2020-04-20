@@ -35,8 +35,8 @@ public:
     size_t getArraySize() const;
     void setArraySize(size_t size);
     void setArray(JsonVar *jv, size_t size);
-    
     JsonVar & operator=(JsonVar && jv);
+    JsonVar * getArrayElememt(size_t index);
 private:
     void reset() { memset(&m_val, 0, sizeof(m_val)); }
     void freeMem();

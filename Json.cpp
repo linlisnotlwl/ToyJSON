@@ -114,6 +114,11 @@ JsonVar & JsonVar::operator=(JsonVar && jv)
     jv.reset();
     return *this;
 }
+JsonVar * JsonVar::getArrayElememt(size_t index)
+{
+    assert(m_type == JsonVar::ARRAY && m_val.array.size > index);
+    return &m_val.array.jv[index];
+}
 // -----------------------------------------------JsonVar implement end !
 // -----------------------------------------------Context implement start :
 
@@ -460,9 +465,9 @@ Json::ParseStatus Json::parseArray(Context * c, JsonVar * out_jv)
             c->parse_stack.destruct_pop<JsonVar>(size);
             return ret;
         }
-        //*c->parse_stack.push<JsonVar>() = std::move(temp);
-        JsonVar * top = c->parse_stack.push<JsonVar>();
-        *top = std::move(temp);
+        *c->parse_stack.push<JsonVar>() = std::move(temp);
+        // JsonVar * top = c->parse_stack.push<JsonVar>();
+        // *top = std::move(temp);
         size++;
         parseWhitespace(c);
         if(*c->json == ',')

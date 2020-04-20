@@ -123,12 +123,30 @@ static void test_parse_array() {
     EXPECT_EQ_INT(Toy::Json::OK, Toy::Json::parse("[[1, false, null], 1 ]", &v));
     EXPECT_EQ_SIZE_T(2, v.getArraySize());
 
-    //EXPECT_EQ_INT(Toy::Json::OK, Toy::Json::parse("[ null , false , true , 123 , "abc" ]", &v));
-    //EXPECT_EQ_SIZE_T(4, v.getArraySize());
+    EXPECT_EQ_INT(Toy::Json::OK, Toy::Json::parse("[ null , false , true , 123 , \"abc\" ]", &v));
+    EXPECT_EQ_SIZE_T(5, v.getArraySize());
+
+    EXPECT_EQ_INT(Toy::JsonVar::NULL_TYPE,  v.getArrayElememt(0)->getType());
+    EXPECT_EQ_INT(Toy::JsonVar::FALSE, v.getArrayElememt(1)->getType());
+    EXPECT_EQ_INT(Toy::JsonVar::TRUE, v.getArrayElememt(2)->getType());
+    EXPECT_EQ_INT(Toy::JsonVar::NUMBER, v.getArrayElememt(3)->getType());
+    EXPECT_EQ_INT(Toy::JsonVar::STRING, v.getArrayElememt(4)->getType());
+    EXPECT_EQ_DOUBLE(123.0, v.getArrayElememt(3)->getNumberVal());
+    EXPECT_EQ_STRING("abc", v.getArrayElememt(4)->getCStr(), v.getArrayElememt(4)->getCStrLength());
+
     EXPECT_EQ_INT(Toy::Json::OK, Toy::Json::parse("[ [ ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]", &v));
     EXPECT_EQ_SIZE_T(4, v.getArraySize());
-
-
+    size_t i, j;
+    for (i = 0; i < 4; i++) {
+        Toy::JsonVar* a = v.getArrayElememt(i);
+        EXPECT_EQ_INT(Toy::JsonVar::ARRAY, a->getType());
+        EXPECT_EQ_SIZE_T(i, a->getArraySize());
+        for (j = 0; j < i; j++) {
+            Toy::JsonVar* e = a->getArrayElememt(j);
+            EXPECT_EQ_INT(Toy::JsonVar::NUMBER, e->getType());
+            EXPECT_EQ_DOUBLE((double)j, e->getNumberVal());
+        }
+    }
 }
 
 #define TEST_ERROR(error, json)\
