@@ -149,6 +149,51 @@ static void test_parse_array() {
     }
 }
 
+static void test_parse_object() {
+    Toy::JsonVar v;
+    size_t i;
+
+    EXPECT_EQ_INT(Toy::Json::OK, Toy::Json::parse(" { } ", &v));
+    EXPECT_EQ_INT(Toy::JsonVar::OBJECT, v.getType());
+    EXPECT_EQ_SIZE_T(0, v.getObjectSize());
+
+    EXPECT_EQ_INT(Toy::Json::OK, Toy::Json::parse(
+        " { \"n\" : null , \"f\" : false , \"t\" : true , \"i\" : 123 , \"s\" : \"abc\", \"a\" : [ 1, 2, 3 ],\"o\" : { \"1\" : 1, \"2\" : 2, \"3\" : 3 } } ",&v));
+    EXPECT_EQ_INT(Toy::JsonVar::OBJECT, v.getType());
+    EXPECT_EQ_SIZE_T(7, v.getObjectSize());
+    // EXPECT_EQ_STRING("n", lept_get_object_key(&v, 0), lept_get_object_key_length(&v, 0));
+    // EXPECT_EQ_INT(Toy::JsonVar::NULL,   lept_get_type(lept_get_object_value(&v, 0)));
+    // EXPECT_EQ_STRING("f", lept_get_object_key(&v, 1), lept_get_object_key_length(&v, 1));
+    // EXPECT_EQ_INT(Toy::JsonVar::FALSE,  lept_get_type(lept_get_object_value(&v, 1)));
+    // EXPECT_EQ_STRING("t", lept_get_object_key(&v, 2), lept_get_object_key_length(&v, 2));
+    // EXPECT_EQ_INT(Toy::JsonVar::TRUE,   lept_get_type(lept_get_object_value(&v, 2)));
+    // EXPECT_EQ_STRING("i", lept_get_object_key(&v, 3), lept_get_object_key_length(&v, 3));
+    // EXPECT_EQ_INT(Toy::JsonVar::NUMBER, lept_get_type(lept_get_object_value(&v, 3)));
+    // EXPECT_EQ_DOUBLE(123.0, lept_get_number(lept_get_object_value(&v, 3)));
+    // EXPECT_EQ_STRING("s", lept_get_object_key(&v, 4), lept_get_object_key_length(&v, 4));
+    // EXPECT_EQ_INT(Toy::JsonVar::STRING, lept_get_type(lept_get_object_value(&v, 4)));
+    // EXPECT_EQ_STRING("abc", lept_get_string(lept_get_object_value(&v, 4)), lept_get_string_length(lept_get_object_value(&v, 4)));
+    // EXPECT_EQ_STRING("a", lept_get_object_key(&v, 5), lept_get_object_key_length(&v, 5));
+    // EXPECT_EQ_INT(Toy::JsonVar::ARRAY, lept_get_type(lept_get_object_value(&v, 5)));
+    // EXPECT_EQ_SIZE_T(3, lept_get_array_size(lept_get_object_value(&v, 5)));
+    for (i = 0; i < 3; i++) {
+        Toy::JsonVar* e = v.getObjectValue("a")->getArrayElememt(i);
+        EXPECT_EQ_INT(Toy::JsonVar::NUMBER, e->getType());
+        EXPECT_EQ_DOUBLE(i + 1.0, e->getNumberVal());
+    }
+    //EXPECT_EQ_STRING("o", lept_get_object_key(&v, 6), lept_get_object_key_length(&v, 6));
+    {
+        Toy::JsonVar* o = v.getObjectValue("o");
+        EXPECT_EQ_INT(Toy::JsonVar::OBJECT, o->getType());
+        
+        Toy::JsonVar* ov1 = o->getObjectValue("1");
+        EXPECT_EQ_SIZE_T(1, ov1->getNumberVal());
+        EXPECT_EQ_INT(Toy::JsonVar::NUMBER, ov1->getType());
+        EXPECT_EQ_DOUBLE((double)1, ov1->getNumberVal());
+        
+    }
+}
+
 #define TEST_ERROR(error, json)\
     do {\
         Toy::JsonVar v;\
@@ -286,12 +331,33 @@ static void test_parse_invalid_unicode_surrogate() {
 }
 
 static void test_parse_miss_comma_or_square_bracket() {
-#if 1
     TEST_ERROR(Toy::Json::MISS_COMMA_OR_SQUARE_BRACKET, "[1");
     TEST_ERROR(Toy::Json::MISS_COMMA_OR_SQUARE_BRACKET, "[1}");
     TEST_ERROR(Toy::Json::MISS_COMMA_OR_SQUARE_BRACKET, "[1 2");
     TEST_ERROR(Toy::Json::MISS_COMMA_OR_SQUARE_BRACKET, "[[]");
-#endif
+}
+
+static void test_parse_miss_key() {
+    TEST_ERROR(Toy::Json::MISS_KEY, "{:1,");
+    TEST_ERROR(Toy::Json::MISS_KEY, "{1:1,");
+    TEST_ERROR(Toy::Json::MISS_KEY, "{true:1,");
+    TEST_ERROR(Toy::Json::MISS_KEY, "{false:1,");
+    TEST_ERROR(Toy::Json::MISS_KEY, "{null:1,");
+    TEST_ERROR(Toy::Json::MISS_KEY, "{[]:1,");
+    TEST_ERROR(Toy::Json::MISS_KEY, "{{}:1,");
+    TEST_ERROR(Toy::Json::MISS_KEY, "{\"a\":1,");
+}
+
+static void test_parse_miss_colon() {
+    TEST_ERROR(Toy::Json::MISS_COLON, "{\"a\"}");
+    TEST_ERROR(Toy::Json::MISS_COLON, "{\"a\",\"b\"}");
+}
+
+static void test_parse_miss_comma_or_curly_bracket() {
+    TEST_ERROR(Toy::Json::MISS_COMMA_OR_CURLY_BRACKET, "{\"a\":1");
+    TEST_ERROR(Toy::Json::MISS_COMMA_OR_CURLY_BRACKET, "{\"a\":1]");
+    TEST_ERROR(Toy::Json::MISS_COMMA_OR_CURLY_BRACKET, "{\"a\":1 \"b\"");
+    TEST_ERROR(Toy::Json::MISS_COMMA_OR_CURLY_BRACKET, "{\"a\":{}");
 }
 
 static void test_parse() {
@@ -313,14 +379,16 @@ static void test_parse() {
     test_access_string();
     test_parse_invalid_unicode_hex();
     test_parse_invalid_unicode_surrogate();
-
     test_parse_array();
     test_parse_miss_comma_or_square_bracket();
 
+    test_parse_miss_key();
+    test_parse_miss_colon();
+    test_parse_miss_comma_or_curly_bracket();
+    test_parse_object();
 }
 int main()
 {
-    
     test_parse();
     printf("TEST RESULT:%d/%d (%3.2f%%) passed\n", test_pass, test_count, test_pass * 100.0 / test_count);
     return 0;

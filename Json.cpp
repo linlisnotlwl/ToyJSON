@@ -15,6 +15,19 @@ namespace Toy
 
 // -----------------------------------------------JsonVar implement start :
 
+JsonVar::JsonVar() 
+{ 
+    reset(); 
+}
+JsonVar::JsonVar(JsonVar &&jv) 
+{ 
+    m_val = jv.m_val;
+    m_type = jv.m_type;
+    jv.m_type = JsonVar::NULL_TYPE;
+    jv.reset();
+}
+JsonVar::~JsonVar() { freeMem(); }
+
 double JsonVar::getNumberVal() const
 {
     assert(m_type == JsonType::NUMBER);
@@ -82,6 +95,11 @@ void JsonVar::freeMem()
         m_val.array.jv = nullptr;
         m_val.array.size = 0;
     }
+    if(m_type == JsonType::OBJECT && m_val.object_p != nullptr)
+    {
+        delete m_val.object_p;
+        m_val.object_p = nullptr;
+    }
 }
 
 size_t JsonVar::getArraySize() const
@@ -118,6 +136,30 @@ JsonVar * JsonVar::getArrayElememt(size_t index)
 {
     assert(m_type == JsonVar::ARRAY && m_val.array.size > index);
     return &m_val.array.jv[index];
+}
+void JsonVar::setObject(Object * op)
+{
+    assert(m_type == JsonVar::OBJECT);
+    freeMem();
+    m_val.object_p = op;
+}
+
+size_t JsonVar::getObjectSize()
+{
+    assert(m_type == JsonVar::OBJECT);
+    return m_val.object_p == nullptr ? 0 : m_val.object_p->size();
+}
+JsonVar * JsonVar::getObjectValue(const std::string & key)
+{
+    // TODO : key,value 
+    assert(m_type == JsonVar::OBJECT);
+    if(m_val.object_p != nullptr)
+    {
+        auto it = m_val.object_p->find(key);
+        if(it != m_val.object_p->end())
+            return &(it->second);
+    }
+    return nullptr;
 }
 // -----------------------------------------------JsonVar implement end !
 // -----------------------------------------------Context implement start :
@@ -163,6 +205,7 @@ Json::ParseStatus Json::parseValue(Context *c, JsonVar * out_jv)
     case 't' : return parseTrue(c, out_jv);
     case '\"' : return parseCStr(c, out_jv);
     case '[' : return parseArray(c, out_jv);
+    case '{' : return parseObject(c, out_jv);
     default : return parseNumber(c, out_jv);
     }
 }
@@ -487,6 +530,83 @@ Json::ParseStatus Json::parseArray(Context * c, JsonVar * out_jv)
         {
             c->parse_stack.destruct_pop<JsonVar>(size);
             return Json::MISS_COMMA_OR_SQUARE_BRACKET;
+        }
+        
+    }
+}
+
+Json::ParseStatus Json::parseObject(Context * c, JsonVar * out_jv)
+{
+    assert(*c->json == '{');
+    c->json++;
+    //size_t count = 0; // num of pair<key, value>
+    parseWhitespace(c);
+    if(*c->json == '}')
+    {
+        c->json++;
+        out_jv->setType(JsonVar::OBJECT); 
+        // setType has set m_val to 0
+        //out_jv->m_val.object_p = nullptr;
+        return Json::OK;
+    }
+    JsonVar::Object * temp = new JsonVar::Object;
+    for(;;)
+    {
+        if(*c->json == '"')
+        {
+            JsonVar key;
+            Json::ParseStatus ret;
+            if((ret = parseValue(c, &key)) != Json::OK)
+            {
+                delete temp;
+                return ret;
+            }
+
+            parseWhitespace(c);
+            if(*c->json == ':')
+            {
+                c->json++;
+                parseWhitespace(c);
+            }
+            else
+            {
+                delete temp;
+                return Json::MISS_COLON;
+            }
+
+            JsonVar value;
+            if((ret = parseValue(c, &value)) != Json::OK)
+            {
+                delete temp;
+                return ret;
+            }
+            temp->emplace(std::make_pair(std::string(key.getCStr()), std::move(value)));   
+        }
+        else
+        {
+            delete temp;
+            return Json::MISS_KEY;
+        }
+        
+        
+        parseWhitespace(c);
+        if(*c->json == ',')
+        {
+            c->json++;
+            parseWhitespace(c);
+        }
+        else if(*c->json == '}')
+        {
+            c->json++;
+            out_jv->setType(JsonVar::OBJECT);
+            out_jv->setObject(temp);
+            temp = nullptr;
+            return Json::OK;
+        }
+        else
+        {
+            delete temp;
+            return Json::MISS_COMMA_OR_CURLY_BRACKET;
         }
         
     }
