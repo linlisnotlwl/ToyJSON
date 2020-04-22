@@ -4,10 +4,13 @@
 #include <cerrno>   // for errno, ERANGE
 #include <cmath>    // for HUGE_VAL
 #include <cstring>  // for memcpy
+#include <exception>
 #include "Json.h"
 
 #define ISDIGIT(ch) ((ch) >= '0' && (ch) <= '9')
 #define ISDIGIT1TO9(ch) ((ch) >= '1' && (ch) <= '9')
+
+static constexpr int STRINGIFY_NUM_BUF_SIZE = 32;
 namespace Toy
 {
 // -----------------------------------------------xx implement start :
@@ -132,6 +135,11 @@ JsonVar & JsonVar::operator=(JsonVar && jv)
     jv.reset();
     return *this;
 }
+const JsonVar * JsonVar::getArrayElememt(size_t index) const
+{
+    assert(m_type == JsonVar::ARRAY && m_val.array.size > index);
+    return &m_val.array.jv[index];
+}
 JsonVar * JsonVar::getArrayElememt(size_t index)
 {
     assert(m_type == JsonVar::ARRAY && m_val.array.size > index);
@@ -143,8 +151,15 @@ void JsonVar::setObject(Object * op)
     freeMem();
     m_val.object_p = op;
 }
-
-size_t JsonVar::getObjectSize()
+JsonVar::Object * JsonVar::getObject()
+{
+    return m_val.object_p;
+}
+const JsonVar::Object * JsonVar::getObject() const
+{
+    return m_val.object_p;
+}
+size_t JsonVar::getObjectSize() const
 {
     assert(m_type == JsonVar::OBJECT);
     return m_val.object_p == nullptr ? 0 : m_val.object_p->size();
@@ -173,14 +188,14 @@ Json::ParseStatus Json::parse(const char *json_text, JsonVar *out_jv)
     c.json = json_text;
     out_jv->setType(JsonVar::JsonType::NULL_TYPE);
     parseWhitespace(&c);
-    if((jps = parseValue(&c, out_jv)) == Json::OK)
+    if((jps = parseValue(&c, out_jv)) == Json::ParseStatus::OK)
     {
         parseWhitespace(&c);
         if(*c.json != '\0') 
         {
             // TODO : is it necessary?
             out_jv->setType(JsonVar::NULL_TYPE);
-            return Json::ROOT_NOT_SINGULAR;
+            return Json::ParseStatus::ROOT_NOT_SINGULAR;
         }
             
     }
@@ -200,7 +215,7 @@ Json::ParseStatus Json::parseValue(Context *c, JsonVar * out_jv)
     switch (*c->json)
     {
     case 'n' : return parseNull(c, out_jv);
-    case '\0' : return Json::EXPECT_VALUE;
+    case '\0' : return Json::ParseStatus::EXPECT_VALUE;
     case 'f' : return parseFalse(c, out_jv);
     case 't' : return parseTrue(c, out_jv);
     case '\"' : return parseCStr(c, out_jv);
@@ -217,10 +232,10 @@ Json::ParseStatus Json::parseNull(Context *c, JsonVar * out_jv)
     {
         out_jv->setType(JsonVar::JsonType::NULL_TYPE);
         c->json += 4;
-        return Json::OK;
+        return Json::ParseStatus::OK;
     }
     else
-        return Json::INVALID_VALUE;
+        return Json::ParseStatus::INVALID_VALUE;
 }
 
 Json::ParseStatus Json::parseFalse(Context *c, JsonVar * out_jv)
@@ -230,10 +245,10 @@ Json::ParseStatus Json::parseFalse(Context *c, JsonVar * out_jv)
     {
         out_jv->setType(JsonVar::JsonType::FALSE);
         c->json += 5;
-        return Json::OK;
+        return Json::ParseStatus::OK;
     }
     else
-        return Json::INVALID_VALUE;
+        return Json::ParseStatus::INVALID_VALUE;
 }
 
 Json::ParseStatus Json::parseTrue(Context *c, JsonVar * out_jv)
@@ -243,10 +258,10 @@ Json::ParseStatus Json::parseTrue(Context *c, JsonVar * out_jv)
     {
         out_jv->setType(JsonVar::JsonType::TRUE);
         c->json += 4;
-        return Json::OK;
+        return Json::ParseStatus::OK;
     }
     else
-        return Json::INVALID_VALUE;
+        return Json::ParseStatus::INVALID_VALUE;
 }
 
 Json::ParseStatus Json::parseNumber(Context * c, JsonVar * out_jv)
@@ -255,9 +270,9 @@ Json::ParseStatus Json::parseNumber(Context * c, JsonVar * out_jv)
     // if we check number using index, 
     // it will make mistake or miss some error case. Like: -.1
     // if(c->json[0] == '+' || c->json[0] == '.' || isalpha(c->json[0]))
-    //     return Json::INVALID_VALUE;
+    //     return Json::ParseStatus::INVALID_VALUE;
     // if(c->json[0] == '0' && c->json[1] != '.' && c->json[1] != '\0')
-    //     return Json::ROOT_NOT_SINGULAR;
+    //     return Json::ParseStatus::ROOT_NOT_SINGULAR;
 
     // number = [ "-" ] int [ frac ] [ exp ]
     // int = "0" / digit1-9 *digit
@@ -273,14 +288,14 @@ Json::ParseStatus Json::parseNumber(Context * c, JsonVar * out_jv)
     else    // check behind the '-': should be number
     {
         // here will check invaild '.' or other
-        if(!ISDIGIT1TO9(*p)) return Json::INVALID_VALUE;
+        if(!ISDIGIT1TO9(*p)) return Json::ParseStatus::INVALID_VALUE;
         for(++p; ISDIGIT(*p); ++p); // jump pass the number
     }
     /* after zero should be '.' or nothing */
     if(*p == '.')
     {
         p++;
-        if(!ISDIGIT(*p)) return Json::INVALID_VALUE;
+        if(!ISDIGIT(*p)) return Json::ParseStatus::INVALID_VALUE;
         for(++p; ISDIGIT(*p); ++p);
     }
     
@@ -289,7 +304,7 @@ Json::ParseStatus Json::parseNumber(Context * c, JsonVar * out_jv)
     {
         p++;
         if(*p == '-' || *p == '+') p++; // 1e10 is correct
-        if(!ISDIGIT(*p)) return Json::INVALID_VALUE;
+        if(!ISDIGIT(*p)) return Json::ParseStatus::INVALID_VALUE;
         for(++p; ISDIGIT(*p); ++p);
 
     }
@@ -303,40 +318,41 @@ Json::ParseStatus Json::parseNumber(Context * c, JsonVar * out_jv)
     //ERANGE:Result too large
     //HUGE_VAL:positive double expression that indicates overflow
     if(errno == ERANGE && (temp == HUGE_VAL || temp == -HUGE_VAL)) 
-        return Json::NUMBER_TOO_BIG;
+        return Json::ParseStatus::NUMBER_TOO_BIG;
 
     c->json = p;
     out_jv->setType(JsonVar::NUMBER);
     out_jv->setNumberVal(temp);
-    return Json::OK;
+    return Json::ParseStatus::OK;
 }
 
 Json::ParseStatus HandleAndReturnError(Context * c, JsonVar * out_jv, Json::ParseStatus status, size_t size)
 {
-    //c->parse_stack.clear();
-    c->parse_stack.pop<char>(size);
+    //c->elem_stack.clear();
+    c->elem_stack.pop<char>(size);
     // TODO : is it necessary?
     out_jv->setType(JsonVar::NULL_TYPE);
     return status;
 }
+
 Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
 {
-    size_t size =  c->parse_stack.getSize(); // current size in stack;
+    size_t size =  c->elem_stack.getSize(); // current size in stack;
     const char * p = c->json;
     assert(*p == '\"');
     u_int32_t u; // save utf-8 code
     for(;;)
     {
         p++;
-        size_t temp_size = c->parse_stack.getSize() - size;
+        size_t temp_size = c->elem_stack.getSize() - size;
         switch(*p)
         {
             
             case '\"' : 
             {  
                 out_jv->setType(JsonVar::STRING);
-                out_jv->setCStr(reinterpret_cast<char *>(c->parse_stack.getData()) + size, temp_size);
-                c->parse_stack.pop<char>(temp_size);
+                out_jv->setCStr(reinterpret_cast<char *>(c->elem_stack.getData()) + size, temp_size);
+                c->elem_stack.pop<char>(temp_size);
                 c->json = p + 1;
                 return Json::ParseStatus::OK;
             }
@@ -347,33 +363,33 @@ Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
                 p++;
                 switch(*p)
                 {
-                    case 'n' : *(c->parse_stack.push<char>()) = '\n'; break;
-                    case '/' : *(c->parse_stack.push<char>()) = '/'; break;
-                    case 'b' : *(c->parse_stack.push<char>()) ='\b'; break;
-                    case 'f' : *(c->parse_stack.push<char>()) ='\f'; break;
-                    case 'r' : *(c->parse_stack.push<char>()) ='\r'; break;
-                    case 't' : *(c->parse_stack.push<char>()) ='\t'; break;
-                    case '\\' : *(c->parse_stack.push<char>()) ='\\'; break;
-                    case '\"' : *(c->parse_stack.push<char>()) ='\"'; break;
+                    case 'n' : *(c->elem_stack.push<char>()) = '\n'; break;
+                    case '/' : *(c->elem_stack.push<char>()) = '/'; break;
+                    case 'b' : *(c->elem_stack.push<char>()) ='\b'; break;
+                    case 'f' : *(c->elem_stack.push<char>()) ='\f'; break;
+                    case 'r' : *(c->elem_stack.push<char>()) ='\r'; break;
+                    case 't' : *(c->elem_stack.push<char>()) ='\t'; break;
+                    case '\\' : *(c->elem_stack.push<char>()) ='\\'; break;
+                    case '\"' : *(c->elem_stack.push<char>()) ='\"'; break;
                     case 'u' :
                     {
                         p++;
                         if(!parseHex4(p, u))
-                            return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_HEX, temp_size);
+                            return HandleAndReturnError(c, out_jv, Json::ParseStatus::INVALID_UNICODE_HEX, temp_size);
                         
                         // check UNICODE_SURROGATE
                         if(u >= 0xDC00)// low surrogate occur with a high surrogate
-                            return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE, temp_size);
+                            return HandleAndReturnError(c, out_jv, Json::ParseStatus::INVALID_UNICODE_SURROGATE, temp_size);
                         if(u >= 0xD800 && u <= 0xDBFF) // high surrogate
                         {
                             p += 4; // jump to next code. should begin with '\\'
                             if(*p != '\\' || *(p+1) != 'u')
-                                return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE, temp_size);
+                                return HandleAndReturnError(c, out_jv, Json::ParseStatus::INVALID_UNICODE_SURROGATE, temp_size);
                             u_int32_t low_s;
                             if(!parseHex4(p+2, low_s))
-                                return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE, temp_size);
+                                return HandleAndReturnError(c, out_jv, Json::ParseStatus::INVALID_UNICODE_SURROGATE, temp_size);
                             if(low_s < 0xDC00 || low_s > 0xDFFF)
-                                return HandleAndReturnError(c, out_jv, Json::INVALID_UNICODE_SURROGATE, temp_size);
+                                return HandleAndReturnError(c, out_jv, Json::ParseStatus::INVALID_UNICODE_SURROGATE, temp_size);
                             
                             u = 0x10000 + ((u - 0xD800) << 10) + (low_s - 0xDC00);
 
@@ -382,38 +398,38 @@ Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
 
                         assert(u >= 0 && u <= 0x10FFFF);
                         if (u >= 0 && u <= 0x007F)
-                            *(c->parse_stack.push<char>()) = u;
+                            *(c->elem_stack.push<char>()) = u;
                         else if (u >= 0x0080 && u <= 0x07FF)
                         {
                             // byte1 : 110x xxxx. 0xC0: 1100 0000.  0x1F:    1 1111.
                             // byte2 : 10xx xxxx. 0x80: 1000 0000.  0x3F:   11 1111.
-                            *(c->parse_stack.push<char>()) = 0xC0 | ((u >> 6) & 0x1F);
-                            *(c->parse_stack.push<char>()) =0x80 | (u & 0x3F);
+                            *(c->elem_stack.push<char>()) = 0xC0 | ((u >> 6) & 0x1F);
+                            *(c->elem_stack.push<char>()) =0x80 | (u & 0x3F);
                         }
                         else if (u >= 0x0800 && u <= 0xFFFF)
                         {
                             // byte1 : 1110 xxxx. 0xE0: 1110 0000.  0x0F:      1111.
                             // byte2 : 10xx xxxx. 0x80: 1000 0000.  0x3F:   11 1111.
                             // byte3 like byte2;
-                            *(c->parse_stack.push<char>()) = 0xE0 | ((u >> 12) & 0x0F);
-                            *(c->parse_stack.push<char>()) = 0x80 | ((u >> 6) & 0x3F);
-                            *(c->parse_stack.push<char>()) = 0x80 | (u & 0x3F);
+                            *(c->elem_stack.push<char>()) = 0xE0 | ((u >> 12) & 0x0F);
+                            *(c->elem_stack.push<char>()) = 0x80 | ((u >> 6) & 0x3F);
+                            *(c->elem_stack.push<char>()) = 0x80 | (u & 0x3F);
                         }
                         else
                         {
                             // byte1 : 1111 0xxx. 0xF0: 1111 0000.  0x08:      0111.
                             // byte2 : 10xx xxxx. 0x80: 1000 0000.  0x3F:   11 1111.
                             // byte3 byte4 like byte2;
-                            *(c->parse_stack.push<char>()) = 0xF0 | ((u >> 18) & 0x08);
-                            *(c->parse_stack.push<char>()) = 0x80 | ((u >> 12) & 0x3F);
-                            *(c->parse_stack.push<char>()) = 0x80 | ((u >> 6) & 0x3F);
-                            *(c->parse_stack.push<char>()) = 0x80 | (u & 0x3F);
+                            *(c->elem_stack.push<char>()) = 0xF0 | ((u >> 18) & 0x08);
+                            *(c->elem_stack.push<char>()) = 0x80 | ((u >> 12) & 0x3F);
+                            *(c->elem_stack.push<char>()) = 0x80 | ((u >> 6) & 0x3F);
+                            *(c->elem_stack.push<char>()) = 0x80 | (u & 0x3F);
                         }
                         p += 3; // p point at 'u', so jump to last number
                         break;
                     }
                     default : 
-                        return HandleAndReturnError(c, out_jv, Json::INVALID_STRING_ESCAPE, temp_size);   
+                        return HandleAndReturnError(c, out_jv, Json::ParseStatus::MISS_QUOTATION_MARK, temp_size);   
                 }
                 break;  
             }
@@ -421,10 +437,10 @@ Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
             {
                 if(*p >= '\x00' && *p <= '\x1F')
                 {
-                    return HandleAndReturnError(c, out_jv, Json::INVALID_STRING_CHAR, temp_size);
+                    return HandleAndReturnError(c, out_jv, Json::ParseStatus::INVALID_STRING_CHAR, temp_size);
                 }
                 else
-                    *(c->parse_stack.push<char>()) = *p;  
+                    *(c->elem_stack.push<char>()) = *p;  
             }
         }
     }
@@ -442,6 +458,7 @@ Json::ParseStatus Json::parseCStr(Context * c, JsonVar * out_jv)
     //   那么编译器可能可生成较快的代码。然而，这类做法明显是不跨编译器，
     //   甚至是某个版本后的 gcc 才支持
 }
+
 bool Json::parseHex4(const char * str, u_int32_t & u)
 {
     int count = 0;
@@ -494,22 +511,22 @@ Json::ParseStatus Json::parseArray(Context * c, JsonVar * out_jv)
         c->json++;
         out_jv->setType(JsonVar::ARRAY);
         out_jv->setArray(nullptr, 0);
-        return Json::OK;
+        return Json::ParseStatus::OK;
     }
     Json::ParseStatus ret;
     for(;;)
     {
-        // bug : if c->parse_stack resize, pointer temp would bu invaild.
-        //JsonVar * temp = c->parse_stack.emplace_back<JsonVar>();
+        // bug : if c->elem_stack resize, pointer temp would bu invaild.
+        //JsonVar * temp = c->elem_stack.emplace_back<JsonVar>();
         JsonVar temp;
-        if((ret = parseValue(c, &temp)) != Json::OK)
+        if((ret = parseValue(c, &temp)) != Json::ParseStatus::OK)
         {
             // !!!must destruct first, and then release the stack space occupied by current array's JsonVar
-            c->parse_stack.destruct_pop<JsonVar>(size);
+            c->elem_stack.destruct_pop<JsonVar>(size);
             return ret;
         }
-        *c->parse_stack.push<JsonVar>() = std::move(temp);
-        // JsonVar * top = c->parse_stack.push<JsonVar>();
+        *c->elem_stack.push<JsonVar>() = std::move(temp);
+        // JsonVar * top = c->elem_stack.push<JsonVar>();
         // *top = std::move(temp);
         size++;
         parseWhitespace(c);
@@ -521,15 +538,15 @@ Json::ParseStatus Json::parseArray(Context * c, JsonVar * out_jv)
         else if(*c->json == ']')
         {
             out_jv->setType(JsonVar::ARRAY);
-            out_jv->setArray(c->parse_stack.top<JsonVar>() - size + 1, size);
-            c->parse_stack.pop<JsonVar>(size);
+            out_jv->setArray(c->elem_stack.top<JsonVar>() - size + 1, size);
+            c->elem_stack.pop<JsonVar>(size);
             c->json++;
-            return Json::OK;
+            return Json::ParseStatus::OK;
         }
         else
         {
-            c->parse_stack.destruct_pop<JsonVar>(size);
-            return Json::MISS_COMMA_OR_SQUARE_BRACKET;
+            c->elem_stack.destruct_pop<JsonVar>(size);
+            return Json::ParseStatus::MISS_COMMA_OR_SQUARE_BRACKET;
         }
         
     }
@@ -547,7 +564,7 @@ Json::ParseStatus Json::parseObject(Context * c, JsonVar * out_jv)
         out_jv->setType(JsonVar::OBJECT); 
         // setType has set m_val to 0
         //out_jv->m_val.object_p = nullptr;
-        return Json::OK;
+        return Json::ParseStatus::OK;
     }
     JsonVar::Object * temp = new JsonVar::Object;
     for(;;)
@@ -556,7 +573,7 @@ Json::ParseStatus Json::parseObject(Context * c, JsonVar * out_jv)
         {
             JsonVar key;
             Json::ParseStatus ret;
-            if((ret = parseValue(c, &key)) != Json::OK)
+            if((ret = parseValue(c, &key)) != Json::ParseStatus::OK)
             {
                 delete temp;
                 return ret;
@@ -571,11 +588,11 @@ Json::ParseStatus Json::parseObject(Context * c, JsonVar * out_jv)
             else
             {
                 delete temp;
-                return Json::MISS_COLON;
+                return Json::ParseStatus::MISS_COLON;
             }
 
             JsonVar value;
-            if((ret = parseValue(c, &value)) != Json::OK)
+            if((ret = parseValue(c, &value)) != Json::ParseStatus::OK)
             {
                 delete temp;
                 return ret;
@@ -585,7 +602,7 @@ Json::ParseStatus Json::parseObject(Context * c, JsonVar * out_jv)
         else
         {
             delete temp;
-            return Json::MISS_KEY;
+            return Json::ParseStatus::MISS_KEY;
         }
         
         
@@ -601,15 +618,154 @@ Json::ParseStatus Json::parseObject(Context * c, JsonVar * out_jv)
             out_jv->setType(JsonVar::OBJECT);
             out_jv->setObject(temp);
             temp = nullptr;
-            return Json::OK;
+            return Json::ParseStatus::OK;
         }
         else
         {
             delete temp;
-            return Json::MISS_COMMA_OR_CURLY_BRACKET;
+            return Json::ParseStatus::MISS_COMMA_OR_CURLY_BRACKET;
         }
         
     }
+}
+
+std::string Json::stringify(const JsonVar *in_jv)
+{
+    if(in_jv == nullptr)
+        return std::string();
+    Context c;
+    stringifyValue(&c, in_jv);
+
+
+    c.json = static_cast<char *>(c.elem_stack.getData());
+    std::string ret(c.json, c.elem_stack.getSize());
+    c.elem_stack.clear();
+    return ret;
+}
+
+void Json::stringifyLiteral(char *buf, const char * str, size_t size)
+{
+    memcpy(buf, str, size);
+}
+
+void Json::stringifyValue(Context *c, const JsonVar *in_jv)
+{
+    switch(in_jv->getType())
+    {
+        case JsonVar::JsonType::NULL_TYPE : 
+            stringifyLiteral(c->elem_stack.push<char>(4), "null", 4); break;
+        case JsonVar::JsonType::FALSE : 
+            stringifyLiteral(c->elem_stack.push<char>(5), "false", 5); break;
+        case JsonVar::JsonType::TRUE : 
+            stringifyLiteral(c->elem_stack.push<char>(4), "true", 4); break;
+        case JsonVar::JsonType::NUMBER :  
+        {
+            char *buf = c->elem_stack.push<char>(STRINGIFY_NUM_BUF_SIZE);
+            int length = sprintf(buf, "%.17g", in_jv->getNumberVal());
+            c->elem_stack.pop<char>(STRINGIFY_NUM_BUF_SIZE - length);
+            break;
+        }
+        case JsonVar::JsonType::STRING : 
+        {
+            stringifyString(c, in_jv->getCStr(), in_jv->getCStrLength());
+            break;
+        }
+        case JsonVar::JsonType::ARRAY :
+        {
+            stringifyArray(c, in_jv);
+            break;
+        }
+        case JsonVar::JsonType::OBJECT :
+        {
+            stringifyObject(c, in_jv);
+            break;
+        } 
+        default :
+        {
+            // do nothing
+            return;
+        } 
+    }
+}
+
+void Json::stringifyString(Context * c, const char * str, size_t length)
+{
+    size_t str_buf_size = length * 2 + 3;  // assume all of chars are \x..
+    char * buf = c->elem_stack.push<char>(str_buf_size);
+    char * p = buf;
+    *p++ = '\"';
+
+    for(size_t i = 0; i < length; ++i)
+    {
+        //char c = ;
+        switch(str[i])
+        {
+            // TODO : parse utf_8
+            // case '\\' : 
+            // {
+            //     if(i + 1 < in_jv->getCStrLength())
+            //     {
+            //         switch(in_jv->getCStr()[i+1])
+            //         {
+                        
+            //         }
+
+            //         i++;
+            //     }
+            //     break;
+            // }
+            case '\n': stringifyLiteral(p, "\\n", 2); p += 2; break;
+            case '/': stringifyLiteral(p, "/", 1); p += 1; break;
+            case '\b': stringifyLiteral(p, "\\b", 2); p += 2; break;
+            case '\f': stringifyLiteral(p, "\\f", 2); p += 2; break;
+            case '\r': stringifyLiteral(p, "\\r", 2); p += 2; break;
+            case '\t': stringifyLiteral(p, "\\t", 2); p += 2; break;
+            case '\0': stringifyLiteral(p, "\\u0000", 6); p += 6; break;
+            case '\"': stringifyLiteral(p, "\\\"", 2); p += 2; break;
+            case '\\' : stringifyLiteral(p, "\\\\", 2); p += 2; break;
+            default : 
+            {
+                *p++ = str[i];
+                break;
+            }
+        }
+    }
+
+    *p++ = '\"';
+    c->elem_stack.pop<char>(str_buf_size - (p - buf));
+}
+
+void Json::stringifyArray(Context * c, const JsonVar *in_jv)
+{
+    *c->elem_stack.push<char>() = '[';
+    for(size_t i = 0; i < in_jv->getArraySize(); ++i)
+    {
+        // TODO : check if there were Objects in array?
+
+        stringifyValue(c, in_jv->getArrayElememt(i));
+        if(i != in_jv->getArraySize() - 1)
+            *c->elem_stack.push<char>() = ',';
+    }
+    *c->elem_stack.push<char>() = ']';
+}
+
+void Json::stringifyObject(Context * c, const JsonVar *in_jv)
+{
+    *c->elem_stack.push<char>() = '{';
+    if(in_jv->getObjectSize() == 0)
+    {
+        *c->elem_stack.push<char>() = '}';
+        return;
+    }  
+    for(auto & kvpair : *in_jv->getObject())
+    {
+        stringifyString(c, kvpair.first.c_str(), kvpair.first.length());
+        *c->elem_stack.push<char>() = ':';
+        stringifyValue(c, &kvpair.second);
+        *c->elem_stack.push<char>() = ',';
+    }
+
+    *c->elem_stack.top<char>() = '}';
 }
 // -----------------------------------------------Json implement end !
 } // namespace Toy

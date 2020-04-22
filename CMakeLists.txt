@@ -13,5 +13,8 @@ set(SRC_LIST_2 ./test/purestack_test.cpp)
 # -g3 可以调试宏定义
 add_compile_options(-std=c++11 -Wall -O0 -g3)
 
+# release version
+#add_compile_options(-std=c++11 -Wall -O2)
+
 add_executable(testjson.out ${SRC_LIST_1})
-#add_executable(testpurestack.out ${SRC_LIST_2})
+#add_executable(purestacktest.out ${SRC_LIST_2})

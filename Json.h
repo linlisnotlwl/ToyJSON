@@ -3,6 +3,7 @@
 //#include <vector>
 #include <sys/types.h>  // for u_int32_t
 #include <unordered_map>
+#include <map>
 #include <string>
 
 #include "PureStack.h"
@@ -12,7 +13,7 @@ namespace Toy
 class JsonVar
 {
 public:
-    typedef std::unordered_multimap<std::string, JsonVar> Object;
+    typedef std::multimap<std::string, JsonVar> Object;
     enum JsonType
     {
         NULL_TYPE = 0,  // 命名为NULL会冲突？？
@@ -44,10 +45,13 @@ public:
     size_t getArraySize() const;
     void setArraySize(size_t size);
     void setArray(JsonVar *jv, size_t size);
+    const JsonVar * getArrayElememt(size_t index) const;
     JsonVar * getArrayElememt(size_t index);
     // object
     void setObject(Object *);
-    size_t getObjectSize();
+    Object * getObject();
+    const Object * getObject() const;
+    size_t getObjectSize() const;
     JsonVar * getObjectValue(const std::string &);
 private:
     void reset() { memset(&m_val, 0, sizeof(m_val)); }
@@ -83,8 +87,8 @@ private:
 struct Context
 {
     const char * json;
-    /// container : store the temp parsed char
-    PureStack parse_stack;
+    /// container : store the temp element
+    PureStack elem_stack;
 };
 
 class Json
@@ -107,7 +111,12 @@ public:
         MISS_COLON,                     /// 12 : 缺失 : 
         MISS_COMMA_OR_CURLY_BRACKET     /// 13 : 缺失 }
     };
+    enum StringifyStatus
+    {
+        SUCCESS
+    };
     static ParseStatus parse(const char *json_text, JsonVar * out_jv);
+    static std::string stringify(const JsonVar *in_jv);
 private:
     static void parseWhitespace(Context * c);
     static ParseStatus parseValue(Context * c, JsonVar * out_jv);
@@ -120,6 +129,12 @@ private:
     static u_int32_t charToUint32(const char & c);
     static ParseStatus parseArray(Context * c, JsonVar * out_jv);
     static ParseStatus parseObject(Context * c, JsonVar * out_jv);
+
+    static void stringifyValue(Context * c, const JsonVar *in_jv);
+    static void stringifyLiteral(char * buf, const char * str, size_t size);
+    static void stringifyString(Context * c, const char * str, size_t length);
+    static void stringifyArray(Context * c, const JsonVar *in_jv);
+    static void stringifyObject(Context * c, const JsonVar *in_jv);
 };
 
 } // namesapce Toy

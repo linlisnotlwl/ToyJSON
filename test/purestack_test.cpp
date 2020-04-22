@@ -49,7 +49,7 @@ static void test_bulit_in()
 }
 static void test_trivially_copyable()
 {
-
+    // TODO
 }
 static void test_destruct()
 {
@@ -71,7 +71,10 @@ static void test_destruct()
     printf("size : %d\n", stack.getSize());
     printf("........test_destruct end\t........\n");
 }
-
+static void test_resize()
+{
+    // TODO
+}
 static void test()
 {
     test_bulit_in();

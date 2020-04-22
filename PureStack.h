@@ -5,7 +5,8 @@
 
 namespace Toy
 {
-    static constexpr int INIT_STACK_SIZE = 10;
+    //static constexpr int INIT_STACK_SIZE = 10; // test resize
+    static constexpr int INIT_STACK_SIZE = 256;
 /**
  * @brief   Container Stack : store any type in same stack. 
  * @warning No security guarantee. Users should use it correctly.
@@ -31,9 +32,10 @@ public:
     template<typename T>
     T * push(size_t count = 1)
     {
+        assert(count >= 0);
         resize(getSize() + sizeof(T) * count);
         T * ret = reinterpret_cast<T *>(free_space);
-        free_space += sizeof(T);
+        free_space += sizeof(T) * count;
         return ret;
     }
     template<typename T, typename... U>
@@ -48,6 +50,7 @@ public:
     template<typename T>
     void pop(size_t count = 1)
     {
+        assert(count >= 0);
         assert(getSize() >= sizeof(T) * count); 
         free_space -= sizeof(T) * count;
         //data_size -= sizeof(T) * count;
@@ -55,6 +58,7 @@ public:
     template<typename T>
     void destruct_pop(size_t count = 1)
     {
+        assert(count > 0);
         assert(getSize() >= sizeof(T) * count);
         for(size_t i = 1; i <= count; ++i)
         {
