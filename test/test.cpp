@@ -450,12 +450,75 @@ static void test_access_string() {
     EXPECT_EQ_STRING("Hello", v.getCStr(), v.getCStrLength());
 }
 
+static void test_access_array() {
+    Toy::JsonVar a(Toy::JsonVar::ARRAY);
+    size_t i;
+    for (i = 0; i < 3; i++) {
+        Toy::JsonVar e(Toy::JsonVar::NUMBER); 
+        e.setNumberVal(i);
+        a.addArrayElement(std::move(e));
+    }
+    
+    EXPECT_EQ_SIZE_T(3, a.getArraySize());
+    for (i = 0; i < 3; i++)
+        EXPECT_EQ_DOUBLE((double)i, a[i].getNumberVal());
+
+    Toy::JsonVar e(Toy::JsonVar::STRING); 
+    e.setCStr("Hello", 5);
+    a.addArrayElement(e);
+    EXPECT_EQ_STRING("Hello", e.getCStr(), e.getCStrLength());
+    EXPECT_EQ_SIZE_T(4, a.getArraySize());
+    EXPECT_EQ_STRING("Hello", a[3].getCStr(), a[3].getCStrLength());
+
+}
+
+static void test_access_object() {
+    Toy::JsonVar o(Toy::JsonVar::OBJECT);
+    Toy::JsonVar v(Toy::JsonVar::NUMBER);
+    size_t i;
+
+    for (i = 0; i < 10; i++)
+    {
+        v.setType(Toy::JsonVar::NUMBER);
+        char key[2] = "a";
+        key[0] += i;
+        v.setNumberVal(i);
+        o.addObjectElement(std::move(std::string(key)), std::move(v));
+    }
+
+    EXPECT_EQ_SIZE_T(10, o.getObjectSize());
+    for (i = 0; i < 10; i++)
+    {
+        char key[] = "a";
+        key[0] += i;
+        Toy::JsonVar * temp1 = o.getObjectValue(std::string(key));
+        Toy::JsonVar temp2 = o[std::string(key)];
+        EXPECT_EQ_DOUBLE((double)i, temp1->getNumberVal());
+        EXPECT_EQ_DOUBLE((double)i, temp2.getNumberVal());
+    }
+
+    for (i = 0; i < 10; i++) {
+        char key[] = "a";
+        key[0] += i;
+        o[std::string(key)].setNumberVal(i + 1);
+    }
+
+    v.setType(Toy::JsonVar::STRING);
+    v.setCStr("Hello", 5);
+    o.addObjectElement(std::string("World"), v);
+
+    EXPECT_EQ_STRING("Hello", o["World"].getCStr(), o["World"].getCStrLength());
+    EXPECT_EQ_STRING("Hello", v.getCStr(), v.getCStrLength());
+}
+
 static void test_access()
 {
     test_access_null();
     test_access_boolean();
     test_access_number();
     test_access_string();
+    test_access_array();
+    test_access_object();
 }
 
 #define TEST_ROUNDTRIP(json)\
@@ -507,7 +570,7 @@ static void test_stringify_array() {
 static void test_stringify_object() {
     TEST_ROUNDTRIP("{}");
     //TEST_ROUNDTRIP("{\"n\":null,\"f\":false,\"t\":true,\"i\":123,\"s\":\"abc\",\"a\":[1,2,3],\"o\":{\"1\":1,\"2\":2,\"3\":3}}");
-    // TODO : sequence has not been considered becasue of using map
+    // TODO : sequence has not been considered becasue of using multimap
     TEST_ROUNDTRIP("{\"a\":[1,2,3],\"f\":false,\"i\":123,\"n\":null,\"o\":{\"1\":1,\"2\":2,\"3\":3},\"s\":\"abc\",\"t\":true}");
     
 }

@@ -11,7 +11,6 @@
 namespace Toy
 {
     // TODO : only provide JsonObject?
-    // [index] ["key"]
     // <<
     // other access operation
 class JsonVar
@@ -29,8 +28,7 @@ public:
         ARRAY,
         OBJECT
     };
-    JsonVar();
-    JsonVar(const JsonVar::JsonType & type);
+    JsonVar(const JsonVar::JsonType & type = NULL_TYPE);
     JsonVar(JsonVar && jv);
     JsonVar(const JsonVar &jv);
     ~JsonVar();
@@ -56,20 +54,26 @@ public:
     void setArray(JsonVar::Array *);
     const JsonVar * getArrayElememt(size_t index) const;
     JsonVar * getArrayElememt(size_t index);
+    void addArrayElement(const JsonVar &);
+    void addArrayElement(JsonVar &&);
     // object
     void setObject(Object *);
     Object * getObject();
     const Object * getObject() const;
     size_t getObjectSize() const;
     JsonVar * getObjectValue(const std::string &);
-    JsonVar & operator[](const std::string &);
     void addObjectElement(const std::string &, const JsonVar &);
+    void addObjectElement(std::string &&, JsonVar &&);
     // opreator
     // 对称性的操作符，通常应该是普通的非成员函数，这样有利于实现混合类型的运算（通过转换）
     // 如："a" == "b" ,如果重载为类内成员函数，则会出错，无法比较，因为操作符要与一个对象绑定
     // 但对于JsonVar，可以采用类内成员函数的形式。
     bool operator==(const JsonVar &);
     bool operator!=(const JsonVar &);
+    // only for json obejct
+    JsonVar & operator[](const std::string & key);
+    // only for json array
+    JsonVar & operator[](size_t index);
 
     
 private:

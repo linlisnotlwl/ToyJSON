@@ -18,13 +18,9 @@ namespace Toy
 
 // -----------------------------------------------JsonVar implement start :
 
-JsonVar::JsonVar() 
-{ 
-    reset(); 
-}
-
 JsonVar::JsonVar(const JsonVar::JsonType & type) : m_type(type)
 {
+    reset();
 }
 
 JsonVar::JsonVar(const JsonVar &jv)
@@ -44,7 +40,8 @@ JsonVar::JsonVar(const JsonVar &jv)
             m_val.num_val = jv.m_val.num_val;
             break;
         case JsonVar::JsonType::STRING :
-            memcpy(m_val.str.s, jv.m_val.str.s, jv.m_val.str.len);
+            m_val.str.s = static_cast<char *>(malloc(jv.m_val.str.len+1));
+            memcpy(m_val.str.s, jv.m_val.str.s, jv.m_val.str.len + 1);
             m_val.str.len = jv.m_val.str.len;
             break;
         case JsonVar::JsonType::ARRAY : 
@@ -192,6 +189,22 @@ JsonVar * JsonVar::getArrayElememt(size_t index)
     return &(*m_val.array_p)[index];
 }
 
+void JsonVar::addArrayElement(const JsonVar & jv)
+{
+    assert(m_type == JsonVar::ARRAY);
+    if(m_val.array_p == nullptr)
+        m_val.array_p = new JsonVar::Array;
+    m_val.array_p->push_back(jv); 
+}
+
+void JsonVar::addArrayElement(JsonVar && jv)
+{
+    assert(m_type == JsonVar::ARRAY);
+    if(m_val.array_p == nullptr)
+        m_val.array_p = new JsonVar::Array;
+    m_val.array_p->push_back(jv); 
+}
+
 void JsonVar::setObject(Object * op)
 {
     assert(m_type == JsonVar::OBJECT);
@@ -217,7 +230,6 @@ size_t JsonVar::getObjectSize() const
 
 JsonVar * JsonVar::getObjectValue(const std::string & key)
 {
-    // TODO : key,value 
     assert(m_type == JsonVar::OBJECT);
     if(m_val.object_p != nullptr)
     {
@@ -226,6 +238,22 @@ JsonVar * JsonVar::getObjectValue(const std::string & key)
             return &(it->second);
     }
     return nullptr;
+}
+
+void JsonVar::addObjectElement(const std::string & key, const JsonVar & value)
+{
+    assert(m_type == JsonVar::OBJECT);
+    if(m_val.object_p == nullptr)
+        m_val.object_p = new JsonVar::Object;
+    m_val.object_p->insert(std::make_pair(key, value)); // copy assignment
+}
+
+void JsonVar::addObjectElement(std::string && key , JsonVar && value)
+{
+    assert(m_type == JsonVar::OBJECT);
+    if(m_val.object_p == nullptr)
+        m_val.object_p = new JsonVar::Object;
+    m_val.object_p->insert(std::move(std::make_pair(key, value)));
 }
 
 bool JsonVar::operator==(const JsonVar & jv)
@@ -275,6 +303,20 @@ bool JsonVar::operator==(const JsonVar & jv)
 bool JsonVar::operator!=(const JsonVar & jv)
 {
     return !this->operator==(jv);
+}
+
+JsonVar & JsonVar::operator[](const std::string & key)
+{
+    assert(m_type == JsonVar::OBJECT);
+    auto i = getObjectValue(key);
+    assert(i != nullptr);
+    return *i;
+}
+
+JsonVar & JsonVar::operator[](size_t index)
+{
+    assert(m_type == JsonVar::ARRAY && getArraySize() > index);
+    return *getArrayElememt(index);
 }
 
 // -----------------------------------------------JsonVar implement end !
