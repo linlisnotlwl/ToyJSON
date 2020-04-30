@@ -1,6 +1,6 @@
 #pragma once
 
-//#include <vector>
+#include <vector>
 #include <sys/types.h>  // for u_int32_t
 #include <unordered_map>
 #include <map>
@@ -10,10 +10,15 @@
 
 namespace Toy
 {
+    // TODO : only provide JsonObject?
+    // [index] ["key"]
+    // <<
+    // other access operation
 class JsonVar
 {
 public:
     typedef std::multimap<std::string, JsonVar> Object;
+    typedef std::vector<JsonVar> Array;
     enum JsonType
     {
         NULL_TYPE = 0,  // 命名为NULL会冲突？？
@@ -25,9 +30,14 @@ public:
         OBJECT
     };
     JsonVar();
+    JsonVar(const JsonVar::JsonType & type);
     JsonVar(JsonVar && jv);
+    JsonVar(const JsonVar &jv);
     ~JsonVar();
-    JsonVar & operator=(JsonVar && jv);
+    const JsonVar & operator=(JsonVar && jv);
+    const JsonVar & operator=(const JsonVar & jv);
+    friend void swap(JsonVar &, JsonVar &);
+
     JsonType getType() const {  return m_type; }
     // FIXME : set to string but s is not null, free coredump
     void setType(const JsonType & type) { freeMem(); m_type = type; }
@@ -43,8 +53,7 @@ public:
     size_t getCStrLength() const;
     // array
     size_t getArraySize() const;
-    void setArraySize(size_t size);
-    void setArray(JsonVar *jv, size_t size);
+    void setArray(JsonVar::Array *);
     const JsonVar * getArrayElememt(size_t index) const;
     JsonVar * getArrayElememt(size_t index);
     // object
@@ -53,6 +62,16 @@ public:
     const Object * getObject() const;
     size_t getObjectSize() const;
     JsonVar * getObjectValue(const std::string &);
+    JsonVar & operator[](const std::string &);
+    void addObjectElement(const std::string &, const JsonVar &);
+    // opreator
+    // 对称性的操作符，通常应该是普通的非成员函数，这样有利于实现混合类型的运算（通过转换）
+    // 如："a" == "b" ,如果重载为类内成员函数，则会出错，无法比较，因为操作符要与一个对象绑定
+    // 但对于JsonVar，可以采用类内成员函数的形式。
+    bool operator==(const JsonVar &);
+    bool operator!=(const JsonVar &);
+
+    
 private:
     void reset() { memset(&m_val, 0, sizeof(m_val)); }
     void freeMem();
@@ -64,14 +83,9 @@ private:
         struct 
         {
             size_t len;
-            char * s;
+            char * s;   // has \0
         } str;
-        struct 
-        {
-            size_t size;    // element num
-            JsonVar *jv;    // array pointer, must destruct all elements  
-        } array;
-        
+        Array * array_p;
         Object * object_p;  
     } m_val;
 };

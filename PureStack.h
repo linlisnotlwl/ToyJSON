@@ -1,15 +1,15 @@
 #pragma once
 #include <cstdlib>  // for malloc free
-#include <new>
+#include <new>  // for placement new
 #include <cassert>
 
 namespace Toy
 {
-    //static constexpr int INIT_STACK_SIZE = 10; // test resize
-    static constexpr int INIT_STACK_SIZE = 256;
+    static constexpr int INIT_STACK_SIZE = 10; // test resize
+    //static constexpr int INIT_STACK_SIZE = 256; // normal
 /**
  * @brief   Container Stack : store any type in same stack. 
- * @warning No security guarantee. Users should use it correctly.
+ * @warning No safety guarantee. Users should use it correctly.
  * @ref     参考代码：https://github.com/Tencent/rapidjson/blob/v1.0.1/include/rapidjson/internal/stack.h
  */
 class PureStack
@@ -24,6 +24,8 @@ public:
         free_space = nullptr;
         memory_size = 0;
     }
+    PureStack(const PureStack &) = delete;
+    const PureStack & operator=(const PureStack &) = delete;
     // template<typename T>
     // void push(T push_data)
     // {

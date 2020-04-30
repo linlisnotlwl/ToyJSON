@@ -133,12 +133,18 @@ static void test_parse_array() {
     EXPECT_EQ_INT(Toy::JsonVar::STRING, v.getArrayElememt(4)->getType());
     EXPECT_EQ_DOUBLE(123.0, v.getArrayElememt(3)->getNumberVal());
     EXPECT_EQ_STRING("abc", v.getArrayElememt(4)->getCStr(), v.getArrayElememt(4)->getCStrLength());
+    
+    EXPECT_EQ_INT(Toy::Json::ParseStatus::OK, Toy::Json::parse("[ [  ], [ 1 ], [ 2 ] ]", &v));
+    EXPECT_EQ_INT(Toy::Json::ParseStatus::OK, Toy::Json::parse("[ [ 0 , false ] , [ 0 , null , \"hello\" ] ]", &v));
+    EXPECT_EQ_INT(Toy::Json::ParseStatus::OK, Toy::Json::parse("[ [ 0 , [] ] , [ 0 , null , \"hello\" ] ]", &v));
 
-    EXPECT_EQ_INT(Toy::Json::ParseStatus::OK, Toy::Json::parse("[ [ ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]", &v));
-    EXPECT_EQ_SIZE_T(4, v.getArraySize());
+    Toy::JsonVar v1;
+    v1.setType(Toy::JsonVar::ARRAY);
+    EXPECT_EQ_INT(Toy::Json::ParseStatus::OK, Toy::Json::parse("[ [ ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]", &v1));
+    EXPECT_EQ_SIZE_T(4, v1.getArraySize());
     size_t i, j;
     for (i = 0; i < 4; i++) {
-        Toy::JsonVar* a = v.getArrayElememt(i);
+        Toy::JsonVar* a = v1.getArrayElememt(i);
         EXPECT_EQ_INT(Toy::JsonVar::ARRAY, a->getType());
         EXPECT_EQ_SIZE_T(i, a->getArraySize());
         for (j = 0; j < i; j++) {
@@ -337,6 +343,69 @@ static void test_parse() {
     test_parse_object();   
 }
 
+#define TEST_EQUAL(json1, json2, equality) \
+    do {\
+        Toy::JsonVar v1, v2;\
+        EXPECT_EQ_INT(Toy::Json::ParseStatus::OK, Toy::Json::parse(json1, &v1));\
+        EXPECT_EQ_INT(Toy::Json::ParseStatus::OK, Toy::Json::parse(json2, &v2));\
+        EXPECT_EQ_INT(equality, v1 == v2);\
+    } while(0)
+
+static void test_equal() {
+    TEST_EQUAL("true", "true", true);
+    TEST_EQUAL("true", "false", false);
+    TEST_EQUAL("false", "false", true);
+    TEST_EQUAL("null", "null", true);
+    TEST_EQUAL("null", "0", false);
+    TEST_EQUAL("123", "123", true);
+    TEST_EQUAL("123", "456", false);
+    TEST_EQUAL("\"abc\"", "\"abc\"", true);
+    TEST_EQUAL("\"abc\"", "\"abcd\"", false);
+    TEST_EQUAL("[]", "[]", true);
+    TEST_EQUAL("[]", "null", false);
+    TEST_EQUAL("[1,2,3]", "[1,2,3]", true);
+    TEST_EQUAL("[1,2,3]", "[1,2,3,4]", false);
+    TEST_EQUAL("[[]]", "[[]]", true);
+    TEST_EQUAL("{}", "{}", true);
+    TEST_EQUAL("{}", "null", false);
+    TEST_EQUAL("{}", "[]", false);
+    TEST_EQUAL("{\"a\":1,\"b\":2}", "{\"a\":1,\"b\":2}", true);
+    TEST_EQUAL("{\"a\":1,\"b\":2}", "{\"b\":2,\"a\":1}", true);
+    TEST_EQUAL("{\"a\":1,\"b\":2}", "{\"a\":1,\"b\":3}", false);
+    TEST_EQUAL("{\"a\":1,\"b\":2}", "{\"a\":1,\"b\":2,\"c\":3}", false);
+    TEST_EQUAL("{\"a\":{\"b\":{\"c\":{}}}}", "{\"a\":{\"b\":{\"c\":{}}}}", true);
+    TEST_EQUAL("{\"a\":{\"b\":{\"c\":{}}}}", "{\"a\":{\"b\":{\"c\":[]}}}", false);
+}
+
+static void test_copy() {
+    Toy::JsonVar v1;
+    Toy::Json::parse("{\"t\":true,\"f\":false,\"n\":null,\"d\":1.5,\"a\":[1,2,3]}", &v1);
+    //Toy::Json::parse("[ [ ] , [ 0 ] , [ 0 , 1 ] , [ 0 , 1 , 2 ] ]", &v1);
+    Toy::JsonVar v2(v1);
+    EXPECT_TRUE(v1 == v2);
+    
+}
+
+static void test_move() {
+    Toy::JsonVar v1;
+    Toy::Json::parse("{\"t\":true,\"f\":false,\"n\":null,\"d\":1.5,\"a\":[1,2,3]}", &v1);
+    Toy::JsonVar v2(v1);
+    Toy::JsonVar v3(std::move(v2));
+    EXPECT_EQ_INT(Toy::JsonVar::NULL_TYPE, v2.getType());
+    EXPECT_TRUE(v1 == v3);
+}
+
+static void test_swap() {
+    Toy::JsonVar v1, v2;
+    v1.setType(Toy::JsonVar::STRING);
+    v2.setType(Toy::JsonVar::STRING);
+    v1.setCStr("Hello", 5);
+    v2.setCStr("World!", 6);
+    swap(v1, v2);
+    EXPECT_EQ_STRING("World!", v1.getCStr(), v1.getCStrLength());
+    EXPECT_EQ_STRING("Hello",  v2.getCStr(), v2.getCStrLength());
+}
+
 static void test_access_null() {
     Toy::JsonVar v;
     v.setType(Toy::JsonVar::STRING);
@@ -438,7 +507,7 @@ static void test_stringify_array() {
 static void test_stringify_object() {
     TEST_ROUNDTRIP("{}");
     //TEST_ROUNDTRIP("{\"n\":null,\"f\":false,\"t\":true,\"i\":123,\"s\":\"abc\",\"a\":[1,2,3],\"o\":{\"1\":1,\"2\":2,\"3\":3}}");
-    // TODO : sequence has not been considered: 
+    // TODO : sequence has not been considered becasue of using map
     TEST_ROUNDTRIP("{\"a\":[1,2,3],\"f\":false,\"i\":123,\"n\":null,\"o\":{\"1\":1,\"2\":2,\"3\":3},\"s\":\"abc\",\"t\":true}");
     
 }
@@ -452,11 +521,16 @@ static void test_stringify() {
     test_stringify_array();
     test_stringify_object();
 }
+
 int main()
 {
     test_parse();
-    test_access();
     test_stringify();
+    test_equal();
+    test_copy();
+    test_move();
+    test_swap();
+    test_access();
     printf("TEST RESULT:%d/%d (%3.2f%%) passed\n", test_pass, test_count, test_pass * 100.0 / test_count);
     return 0;
 }

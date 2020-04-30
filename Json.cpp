@@ -22,6 +22,48 @@ JsonVar::JsonVar()
 { 
     reset(); 
 }
+
+JsonVar::JsonVar(const JsonVar::JsonType & type) : m_type(type)
+{
+}
+
+JsonVar::JsonVar(const JsonVar &jv)
+{
+    m_type = jv.m_type;
+    switch(jv.m_type)
+    {
+        case JsonVar::JsonType::NULL_TYPE : 
+            break;
+        case JsonVar::JsonType::FALSE : 
+            m_val.bool_val = false;
+            break;
+        case JsonVar::JsonType::TRUE : 
+            m_val.bool_val = true;
+            break;
+        case JsonVar::JsonType::NUMBER : 
+            m_val.num_val = jv.m_val.num_val;
+            break;
+        case JsonVar::JsonType::STRING :
+            memcpy(m_val.str.s, jv.m_val.str.s, jv.m_val.str.len);
+            m_val.str.len = jv.m_val.str.len;
+            break;
+        case JsonVar::JsonType::ARRAY : 
+            if(jv.getArraySize() == 0)
+                m_val.array_p = new JsonVar::Array;  // if we do not new , it will occur an error at test_parse_array(137)
+            else
+                m_val.array_p = new JsonVar::Array(jv.m_val.array_p->begin(),jv.m_val.array_p->end());
+            break;
+        case JsonVar::JsonType::OBJECT : 
+            if(jv.getObjectSize() == 0)
+                m_val.object_p = new JsonVar::Object;
+            else
+            m_val.object_p = new JsonVar::Object(jv.m_val.object_p->begin(), jv.m_val.object_p->end());
+            break;
+        default : // error type : should not happen
+            throw std::exception();  
+    }
+}
+
 JsonVar::JsonVar(JsonVar &&jv) 
 { 
     m_val = jv.m_val;
@@ -29,7 +71,32 @@ JsonVar::JsonVar(JsonVar &&jv)
     jv.m_type = JsonVar::NULL_TYPE;
     jv.reset();
 }
+
 JsonVar::~JsonVar() { freeMem(); }
+
+const JsonVar & JsonVar::operator=(JsonVar && jv)
+{
+    m_val = jv.m_val;
+    m_type = jv.m_type;
+    jv.m_type = JsonVar::NULL_TYPE;
+    jv.reset();
+    return *this;
+}
+
+const JsonVar & JsonVar::operator=(const JsonVar & jv)
+{
+    freeMem();
+    JsonVar temp(jv);
+    *this = std::move(temp);
+    return *this;
+}
+
+void swap(JsonVar &left, JsonVar &right)
+{
+    using std::swap;    // use std version if it has not its own swap.
+    swap(left.m_type, right.m_type);
+    swap(left.m_val, right.m_val);
+}
 
 double JsonVar::getNumberVal() const
 {
@@ -69,7 +136,7 @@ void JsonVar::setCStr(const char * s, size_t len)
     freeMem();   
     m_val.str.s = static_cast<char *>(malloc(sizeof(char) * (len + 1)));
     memcpy(m_val.str.s, s, len);
-    m_val.str.s[len] = '\0';
+    m_val.str.s[len] = '\0'; // !!!
     m_val.str.len = len;
     // set str type ?? no, user should set it to JsonType::STRING before using this function
 }
@@ -88,15 +155,10 @@ void JsonVar::freeMem()
         m_val.str.s = nullptr;
         m_val.str.len = 0;
     }
-    if(m_type == JsonType::ARRAY && m_val.array.jv != nullptr)
+    if(m_type == JsonType::ARRAY && m_val.array_p != nullptr)
     {
-        for(size_t i = 0; i < m_val.array.size; ++i)
-        {
-            m_val.array.jv[i].~JsonVar();
-        }
-        free(m_val.array.jv);
-        m_val.array.jv = nullptr;
-        m_val.array.size = 0;
+        delete m_val.array_p;
+        m_val.array_p = nullptr;
     }
     if(m_type == JsonType::OBJECT && m_val.object_p != nullptr)
     {
@@ -107,63 +169,52 @@ void JsonVar::freeMem()
 
 size_t JsonVar::getArraySize() const
 {
-    //assert(m_type == JsonVar::ARRAY);
-    return m_val.array.size;
-}
-void JsonVar::setArraySize(size_t size)
-{
     assert(m_type == JsonVar::ARRAY);
-    m_val.array.size = size;
+    return m_val.array_p == nullptr ? 0 : m_val.array_p->size();
 }
-void JsonVar::setArray(JsonVar *jv, size_t size)
+
+void JsonVar::setArray(JsonVar::Array *ap)
 {
     assert(m_type == JsonVar::ARRAY);
     freeMem();
-    if(jv != nullptr)   // Bug : if jv is null,that would be a bug, so should check it first
-    {
-        m_val.array.jv = reinterpret_cast<JsonVar *>(malloc(size * sizeof(JsonVar)));
-        memcpy(m_val.array.jv, jv, size * sizeof(JsonVar));
-    }
-    m_val.array.size = size;
+    m_val.array_p = ap;
 }
 
-JsonVar & JsonVar::operator=(JsonVar && jv)
-{
-    m_val = jv.m_val;
-    m_type = jv.m_type;
-    jv.m_type = JsonVar::NULL_TYPE;
-    jv.reset();
-    return *this;
-}
 const JsonVar * JsonVar::getArrayElememt(size_t index) const
 {
-    assert(m_type == JsonVar::ARRAY && m_val.array.size > index);
-    return &m_val.array.jv[index];
+    assert(m_type == JsonVar::ARRAY && getArraySize() > index);
+    return &(*m_val.array_p)[index];
 }
+
 JsonVar * JsonVar::getArrayElememt(size_t index)
 {
-    assert(m_type == JsonVar::ARRAY && m_val.array.size > index);
-    return &m_val.array.jv[index];
+    assert(m_type == JsonVar::ARRAY && getArraySize() > index);
+    return &(*m_val.array_p)[index];
 }
+
 void JsonVar::setObject(Object * op)
 {
     assert(m_type == JsonVar::OBJECT);
     freeMem();
     m_val.object_p = op;
 }
+
 JsonVar::Object * JsonVar::getObject()
 {
     return m_val.object_p;
 }
+
 const JsonVar::Object * JsonVar::getObject() const
 {
     return m_val.object_p;
 }
+
 size_t JsonVar::getObjectSize() const
 {
     assert(m_type == JsonVar::OBJECT);
     return m_val.object_p == nullptr ? 0 : m_val.object_p->size();
 }
+
 JsonVar * JsonVar::getObjectValue(const std::string & key)
 {
     // TODO : key,value 
@@ -176,6 +227,56 @@ JsonVar * JsonVar::getObjectValue(const std::string & key)
     }
     return nullptr;
 }
+
+bool JsonVar::operator==(const JsonVar & jv)
+{
+    if(m_type != jv.m_type)
+        return false;
+    switch(m_type)
+    {
+        case JsonVar::JsonType::NULL_TYPE : return true;
+        case JsonVar::JsonType::FALSE : return true;
+        case JsonVar::JsonType::TRUE : return true;
+        case JsonVar::JsonType::NUMBER : return m_val.num_val == jv.m_val.num_val;
+        case JsonVar::JsonType::STRING : return strcmp(m_val.str.s, jv.m_val.str.s) == 0;
+        case JsonVar::JsonType::ARRAY : 
+            if(this->getArraySize() != jv.getArraySize())
+                return false;
+            if(m_val.array_p == nullptr)
+                return true;
+            for(size_t i = 0; i < this->getArraySize(); ++i)
+            {
+                if((*m_val.array_p)[i] != (*jv.m_val.array_p)[i])
+                    return false;
+            }
+            return true;  
+        case JsonVar::JsonType::OBJECT : 
+            if(getObjectSize() != jv.getObjectSize())
+                return false;
+            if(m_val.object_p == nullptr)
+                return true;
+            for(auto it = m_val.object_p->begin(); it != m_val.object_p->end(); ++it)
+            {
+                auto it_temp = jv.m_val.object_p->find(it->first);
+                if(it_temp != jv.m_val.object_p->end())
+                {
+                    if(it->second != it_temp->second)
+                        return false;
+                }   
+                else
+                    return false;
+            }
+            return true;
+        default : // error type : should not happen
+            throw std::exception();  
+    }
+}
+
+bool JsonVar::operator!=(const JsonVar & jv)
+{
+    return !this->operator==(jv);
+}
+
 // -----------------------------------------------JsonVar implement end !
 // -----------------------------------------------Context implement start :
 
@@ -502,17 +603,19 @@ u_int32_t Json::charToUint32(const char & c)
 Json::ParseStatus Json::parseArray(Context * c, JsonVar * out_jv)
 {
     //const char * p = c->json;
-    size_t size = 0; // store cur level array elememt nums
+    //size_t size = 0; // store cur level array elememt nums
     assert(*c->json == '[');
     c->json++;
     parseWhitespace(c);
+    JsonVar::Array * array = new JsonVar::Array;
     if(*c->json == ']')
     {
         c->json++;
         out_jv->setType(JsonVar::ARRAY);
-        out_jv->setArray(nullptr, 0);
+        out_jv->setArray(array);
         return Json::ParseStatus::OK;
     }
+    
     Json::ParseStatus ret;
     for(;;)
     {
@@ -522,13 +625,10 @@ Json::ParseStatus Json::parseArray(Context * c, JsonVar * out_jv)
         if((ret = parseValue(c, &temp)) != Json::ParseStatus::OK)
         {
             // !!!must destruct first, and then release the stack space occupied by current array's JsonVar
-            c->elem_stack.destruct_pop<JsonVar>(size);
+            delete array;
             return ret;
         }
-        *c->elem_stack.push<JsonVar>() = std::move(temp);
-        // JsonVar * top = c->elem_stack.push<JsonVar>();
-        // *top = std::move(temp);
-        size++;
+        array->emplace_back(std::move(temp));
         parseWhitespace(c);
         if(*c->json == ',')
         {
@@ -538,18 +638,17 @@ Json::ParseStatus Json::parseArray(Context * c, JsonVar * out_jv)
         else if(*c->json == ']')
         {
             out_jv->setType(JsonVar::ARRAY);
-            out_jv->setArray(c->elem_stack.top<JsonVar>() - size + 1, size);
-            c->elem_stack.pop<JsonVar>(size);
+            out_jv->setArray(array);
             c->json++;
             return Json::ParseStatus::OK;
         }
         else
         {
-            c->elem_stack.destruct_pop<JsonVar>(size);
+            delete array;
             return Json::ParseStatus::MISS_COMMA_OR_SQUARE_BRACKET;
-        }
-        
+        }    
     }
+    delete array; // ??
 }
 
 Json::ParseStatus Json::parseObject(Context * c, JsonVar * out_jv)
@@ -690,47 +789,41 @@ void Json::stringifyValue(Context *c, const JsonVar *in_jv)
 
 void Json::stringifyString(Context * c, const char * str, size_t length)
 {
-    size_t str_buf_size = length * 2 + 3;  // assume all of chars are \x..
+    size_t str_buf_size = length * 6 + 3;  // assume all of chars are \x00
     char * buf = c->elem_stack.push<char>(str_buf_size);
     char * p = buf;
     *p++ = '\"';
-
+    static const char hex_digits[] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 
+        'A', 'B', 'C', 'D', 'E', 'F' };
     for(size_t i = 0; i < length; ++i)
     {
-        //char c = ;
-        switch(str[i])
+        unsigned char ch = static_cast<unsigned char>(str[i]);
+        switch(ch)
         {
-            // TODO : parse utf_8
-            // case '\\' : 
-            // {
-            //     if(i + 1 < in_jv->getCStrLength())
-            //     {
-            //         switch(in_jv->getCStr()[i+1])
-            //         {
-                        
-            //         }
-
-            //         i++;
-            //     }
-            //     break;
-            // }
             case '\n': stringifyLiteral(p, "\\n", 2); p += 2; break;
-            case '/': stringifyLiteral(p, "/", 1); p += 1; break;
+            //case '/': stringifyLiteral(p, "/", 1); p += 1; break;
             case '\b': stringifyLiteral(p, "\\b", 2); p += 2; break;
             case '\f': stringifyLiteral(p, "\\f", 2); p += 2; break;
             case '\r': stringifyLiteral(p, "\\r", 2); p += 2; break;
             case '\t': stringifyLiteral(p, "\\t", 2); p += 2; break;
-            case '\0': stringifyLiteral(p, "\\u0000", 6); p += 6; break;
+            //case '\0': stringifyLiteral(p, "\\u0000", 6); p += 6; break;
             case '\"': stringifyLiteral(p, "\\\"", 2); p += 2; break;
             case '\\' : stringifyLiteral(p, "\\\\", 2); p += 2; break;
             default : 
             {
-                *p++ = str[i];
+                if(ch < 0x20)
+                {
+                    stringifyLiteral(p, "\\u00", 4);
+                    p += 4;
+                    *p++ = hex_digits[ch >> 4];
+                    *p++ = hex_digits[ch % 15];
+                }
+                else
+                    *p++ = str[i];
                 break;
             }
         }
     }
-
     *p++ = '\"';
     c->elem_stack.pop<char>(str_buf_size - (p - buf));
 }
@@ -738,15 +831,18 @@ void Json::stringifyString(Context * c, const char * str, size_t length)
 void Json::stringifyArray(Context * c, const JsonVar *in_jv)
 {
     *c->elem_stack.push<char>() = '[';
+    if(in_jv->getArraySize() == 0)
+    {
+        *c->elem_stack.push<char>() = ']';
+        return;
+    }
     for(size_t i = 0; i < in_jv->getArraySize(); ++i)
     {
         // TODO : check if there were Objects in array?
-
         stringifyValue(c, in_jv->getArrayElememt(i));
-        if(i != in_jv->getArraySize() - 1)
-            *c->elem_stack.push<char>() = ',';
+        *c->elem_stack.push<char>() = ',';
     }
-    *c->elem_stack.push<char>() = ']';
+    *c->elem_stack.top<char>() = ']';
 }
 
 void Json::stringifyObject(Context * c, const JsonVar *in_jv)
