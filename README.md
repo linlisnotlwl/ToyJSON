@@ -75,3 +75,8 @@ object = %x7B ws [ member *( ws %x2C ws member ) ] ws %x7D
 ~~~
 
 
+## To be improved
+
+* strtod
+
+## To be continued

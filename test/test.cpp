@@ -1,5 +1,7 @@
-#include <stdio.h>
-#include <string.h>
+#include <iostream>
+#include <cstdio>
+#include <cstring>
+#include <chrono>
 #include "../Json.h"
 
 static int main_ret = 0;
@@ -587,13 +589,21 @@ static void test_stringify() {
 
 int main()
 {
-    test_parse();
-    test_stringify();
-    test_equal();
-    test_copy();
-    test_move();
-    test_swap();
-    test_access();
+    auto start = std::chrono::high_resolution_clock::now();
+    for(int i = 0; i < 20000; ++i)
+    {
+        test_parse();
+        test_stringify();
+        test_equal();
+        test_copy();
+        test_move();
+        test_swap();
+        test_access();
+    }
+    auto end = std::chrono::high_resolution_clock::now();
     printf("TEST RESULT:%d/%d (%3.2f%%) passed\n", test_pass, test_count, test_pass * 100.0 / test_count);
+    std::cout << "Time: " 
+        << std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() 
+        << " us" << std::endl;
     return 0;
 }

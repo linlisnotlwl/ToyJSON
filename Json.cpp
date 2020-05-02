@@ -457,7 +457,7 @@ Json::ParseStatus Json::parseNumber(Context * c, JsonVar * out_jv)
     // Like : 0123 (parse 0, left 123) 
     
     errno = 0;  // c-type error handling
-    double temp = strtod(c->json, &end);
+    double temp = strtod(c->json, &end);    // TODO : strtod can be improved
     //ERANGE:Result too large
     //HUGE_VAL:positive double expression that indicates overflow
     if(errno == ERANGE && (temp == HUGE_VAL || temp == -HUGE_VAL)) 

@@ -5,8 +5,11 @@
 
 namespace Toy
 {
+#if 0
     static constexpr int INIT_STACK_SIZE = 10; // test resize
-    //static constexpr int INIT_STACK_SIZE = 256; // normal
+#else
+    static constexpr int INIT_STACK_SIZE = 128; // normal
+#endif
 /**
  * @brief   Container Stack : store any type in same stack. 
  * @warning No safety guarantee. Users should use it correctly.
