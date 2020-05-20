@@ -1,0 +1,19 @@
+{
+    "testnum" : 123,
+    "testfalse" : false,
+    "testtrue" : true,
+    "testnull" : null,
+    "teststring" : "hello json",
+    "testarray" : 
+    [
+        {
+            "I" : [1, 2, 3]
+        },
+        "string"
+    ],
+    "testobject" : 
+    {
+        "keyone" : 1,
+        "keytwo" : "2"
+    }
+}

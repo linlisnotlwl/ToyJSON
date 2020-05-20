@@ -5,6 +5,8 @@
 #include <cmath>    // for HUGE_VAL
 #include <cstring>  // for memcpy
 #include <exception>
+#include <fstream> // for ifstream ofstream
+#include <sstream>
 #include "Json.h"
 
 #define ISDIGIT(ch) ((ch) >= '0' && (ch) <= '9')
@@ -904,6 +906,30 @@ void Json::stringifyObject(Context * c, const JsonVar *in_jv)
     }
 
     *c->elem_stack.top<char>() = '}';
+}
+
+bool Json::loadFile(const char * file_path, JsonVar & jv)
+{
+    std::ifstream ifile(file_path);//, std::ios::in|std::ios::binary
+    if(!ifile.is_open())
+        return false;
+    std::stringstream in_text;
+    in_text << ifile.rdbuf();
+    ifile.close();
+    if(Json::ParseStatus::OK != parse(in_text.str().c_str(), &jv))
+        return false;
+    else   
+        return true;           
+}
+
+bool Json::saveFile(const char * save_path, JsonVar & jv)
+{
+    std::ofstream ofile(save_path);
+    if(!ofile.is_open())
+        return false;
+    ofile << stringify(&jv);
+    ofile.close();
+    return true;
 }
 // -----------------------------------------------Json implement end !
 } // namespace Toy

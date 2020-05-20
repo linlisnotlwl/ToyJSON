@@ -587,10 +587,25 @@ static void test_stringify() {
     test_stringify_object();
 }
 
+static void test_operating_file()
+{
+    Toy::JsonVar jv;
+    if(!Toy::Json::loadFile("test.json", jv))
+        printf("LoadFile error!\n");
+    else
+    {
+        printf("type : %d\n", jv.getType());
+        printf("Load File Json Var Size : %lu\n", jv.getObjectSize());
+    }
+    if(!Toy::Json::saveFile("testsave.json", jv))
+        printf("SaveFile error!\n");
+}
+
 int main()
 {
     auto start = std::chrono::high_resolution_clock::now();
-    for(int i = 0; i < 20000; ++i)
+    int test_times = 20000;
+    for(int i = 0; i < test_times; ++i)
     {
         test_parse();
         test_stringify();
@@ -600,6 +615,7 @@ int main()
         test_swap();
         test_access();
     }
+    test_operating_file();
     auto end = std::chrono::high_resolution_clock::now();
     printf("TEST RESULT:%d/%d (%3.2f%%) passed\n", test_pass, test_count, test_pass * 100.0 / test_count);
     std::cout << "Time: " 

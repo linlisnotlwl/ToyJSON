@@ -133,8 +133,13 @@ public:
     {
         SUCCESS
     };
-    static ParseStatus parse(const char *json_text, JsonVar * out_jv);
-    static std::string stringify(const JsonVar *in_jv);
+    static ParseStatus parse(const char * json_text, JsonVar * out_jv);
+    static std::string stringify(const JsonVar * in_jv);
+    static bool loadFile(const char * file_path, JsonVar & jv);
+    static bool saveFile(const char * save_path, JsonVar & jv);
+    // TODO : formatting output json 
+    // static std::string beautify(std::string)
+
 private:
     static void parseWhitespace(Context * c);
     static ParseStatus parseValue(Context * c, JsonVar * out_jv);
