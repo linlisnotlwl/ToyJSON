@@ -179,6 +179,18 @@ void JsonVar::setArray(JsonVar::Array *ap)
     m_val.array_p = ap;
 }
 
+JsonVar::Array * JsonVar::getArray()
+{
+    assert(m_type == JsonVar::ARRAY);
+    return m_val.array_p;
+}
+
+const JsonVar::Array * JsonVar::getArray() const
+{
+    assert(m_type == JsonVar::ARRAY);
+    return m_val.array_p;
+}
+
 const JsonVar * JsonVar::getArrayElememt(size_t index) const
 {
     assert(m_type == JsonVar::ARRAY && getArraySize() > index);

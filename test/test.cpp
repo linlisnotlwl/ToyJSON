@@ -590,7 +590,7 @@ static void test_stringify() {
 static void test_operating_file()
 {
     Toy::JsonVar jv;
-    if(!Toy::Json::loadFile("test.json", jv))
+    if(!Toy::Json::loadFile("../test/test.json", jv))
         printf("LoadFile error!\n");
     else
     {
